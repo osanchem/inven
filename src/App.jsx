@@ -217,6 +217,7 @@ function LoginScreen({ schoolName }) {
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [regSchoolName, setRegSchoolName] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ text: "", ok: true });
@@ -241,6 +242,7 @@ function LoginScreen({ schoolName }) {
     } else {
       if (!regSchoolName.trim()) { setMsg({ text: "학교명을 입력해주세요.", ok: false }); setLoading(false); return; }
       if (password.length < 6) { setMsg({ text: "비밀번호는 6자 이상이어야 합니다.", ok: false }); setLoading(false); return; }
+      if (password !== passwordConfirm) { setMsg({ text: "비밀번호가 일치하지 않습니다.", ok: false }); setLoading(false); return; }
       const { error } = await supabase.auth.signUp({
         email, password,
         options: { data: { school_name: regSchoolName.trim() } },
@@ -296,10 +298,22 @@ function LoginScreen({ schoolName }) {
       )}
 
       {mode !== "reset" && (
-        <div style={{ width:"100%", marginBottom:mode==="signin"?8:20 }}>
+        <div style={{ width:"100%", marginBottom:mode==="signup"?12:mode==="signin"?8:20 }}>
           <label style={labelStyle}>비밀번호</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key==="Enter" && handleSubmit()}
             placeholder={mode==="signup" ? "6자 이상" : "비밀번호 입력"} style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+        </div>
+      )}
+
+      {mode === "signup" && (
+        <div style={{ width:"100%", marginBottom:20 }}>
+          <label style={labelStyle}>비밀번호 확인</label>
+          <input type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} onKeyDown={(e) => e.key==="Enter" && handleSubmit()}
+            placeholder="비밀번호 재입력" style={{ ...inputStyle, width:"100%", boxSizing:"border-box",
+              borderColor: passwordConfirm && password !== passwordConfirm ? "#E53E3E" : "" }} />
+          {passwordConfirm && password !== passwordConfirm && (
+            <div style={{ fontSize:"11px", color:"#E53E3E", marginTop:4 }}>비밀번호가 일치하지 않습니다.</div>
+          )}
         </div>
       )}
 
