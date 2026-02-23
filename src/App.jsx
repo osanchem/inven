@@ -217,6 +217,7 @@ function LoginScreen({ schoolName }) {
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [regSchoolName, setRegSchoolName] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ text: "", ok: true });
 
@@ -238,8 +239,12 @@ function LoginScreen({ schoolName }) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setMsg({ text: "이메일 또는 비밀번호가 올바르지 않습니다.", ok: false });
     } else {
+      if (!regSchoolName.trim()) { setMsg({ text: "학교명을 입력해주세요.", ok: false }); setLoading(false); return; }
       if (password.length < 6) { setMsg({ text: "비밀번호는 6자 이상이어야 합니다.", ok: false }); setLoading(false); return; }
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { error } = await supabase.auth.signUp({
+        email, password,
+        options: { data: { school_name: regSchoolName.trim() } },
+      });
       if (error) setMsg({ text: "가입 실패: " + error.message, ok: false });
       else setMsg({ text: "확인 이메일을 발송했습니다. 받은 편함을 확인해주세요.", ok: true });
     }
@@ -277,6 +282,18 @@ function LoginScreen({ schoolName }) {
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key==="Enter" && handleSubmit()}
           placeholder="example@school.kr" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
       </div>
+
+      {mode === "signup" && (
+        <div style={{ width:"100%", marginBottom:12 }}>
+          <label style={labelStyle}>학교명 *</label>
+          <input type="text" value={regSchoolName} onChange={(e) => setRegSchoolName(e.target.value)}
+            placeholder="예: 오산고등학교(서울)" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+          <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:4 }}>
+            같은 이름의 학교 구분을 위해 <span style={{ color:"#4A5568", fontWeight:600 }}>학교명(지역)</span> 형식으로 입력해주세요.<br />
+            같은 학교명으로 가입한 계정끼리 데이터가 공유됩니다.
+          </div>
+        </div>
+      )}
 
       {mode !== "reset" && (
         <div style={{ width:"100%", marginBottom:mode==="signin"?8:20 }}>
@@ -325,7 +342,7 @@ function LoginScreen({ schoolName }) {
 }
 
 // ─── Setup Wizard (초기 DB 구축) ───
-function SetupWizard({ onComplete, showToast }) {
+function SetupWizard({ onComplete, showToast, schoolId }) {
   const [step, setStep] = useState("choose");
   const [csvChemicals, setCsvChemicals] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -333,9 +350,9 @@ function SetupWizard({ onComplete, showToast }) {
   const handleSampleData = async () => {
     setLoading(true);
     try {
-      await supabase.from("chemicals").insert(SAMPLE_CHEMICALS.map(chemToDb));
+      await supabase.from("chemicals").insert(SAMPLE_CHEMICALS.map((c) => ({ ...chemToDb(c), school_id: schoolId })));
       await supabase.from("logs").insert(
-        SAMPLE_LOGS.map((l) => ({ chemical_id:l.chemicalId, type:l.type, amount:l.amount, user_name:l.user, purpose:l.purpose, note:l.note, date:l.date }))
+        SAMPLE_LOGS.map((l) => ({ chemical_id:l.chemicalId, type:l.type, amount:l.amount, user_name:l.user, purpose:l.purpose, note:l.note, date:l.date, school_id: schoolId }))
       );
       showToast("샘플 데이터가 등록되었습니다.");
       onComplete();
@@ -373,7 +390,7 @@ function SetupWizard({ onComplete, showToast }) {
   const handleCSVImport = async () => {
     setLoading(true);
     try {
-      await supabase.from("chemicals").insert(csvChemicals.map(chemToDb));
+      await supabase.from("chemicals").insert(csvChemicals.map((c) => ({ ...chemToDb(c), school_id: schoolId })));
       showToast(`${csvChemicals.length}개 약품이 등록되었습니다.`);
       onComplete();
     } catch { showToast("가져오기에 실패했습니다.", "error"); }
@@ -929,6 +946,9 @@ export default function LabInventoryApp() {
     setTimeout(() => setToast(null), 2500);
   };
 
+  // 로그인한 사용자의 학교명 (데이터 격리 키)
+  const schoolId = user?.user_metadata?.school_name?.trim() || "";
+
   // ─── Auth ───
   useEffect(() => {
     if (IS_DEMO) {
@@ -1030,7 +1050,7 @@ export default function LabInventoryApp() {
         await supabase.from("logs").insert({
           chemical_id: logFormData.chemicalId, type: logFormData.type,
           amount: finalAmount, user_name: logFormData.user,
-          purpose: logFormData.purpose, note: logFormData.note, date: new Date().toISOString(),
+          purpose: logFormData.purpose, note: logFormData.note, date: new Date().toISOString(), school_id: schoolId,
         });
         if (chem) {
           const delta = logFormData.type === "in" ? finalAmount : -finalAmount;
@@ -1075,7 +1095,7 @@ export default function LabInventoryApp() {
     if (IS_DEMO) {
       setChemicals((prev) => [...prev, chem].sort((a, b) => a.id.localeCompare(b.id)));
     } else {
-      const { error } = await supabase.from("chemicals").insert(chemToDb(chem));
+      const { error } = await supabase.from("chemicals").insert({ ...chemToDb(chem), school_id: schoolId });
       if (error) { showToast("등록에 실패했습니다.", "error"); return; }
     }
     showToast(`${chem.name} 등록 완료!`);
@@ -1506,7 +1526,7 @@ export default function LabInventoryApp() {
         ))}
       </div>
 
-      {showSetup   && <SetupWizard onComplete={handleSetupComplete} showToast={showToast} />}
+      {showSetup   && <SetupWizard onComplete={handleSetupComplete} showToast={showToast} schoolId={schoolId} />}
       {showScanner && <QRScanner chemicals={chemicals} onScan={handleScan} onClose={() => setShowScanner(false)} />}
       {showLogForm  && renderLogForm()}
       {showAddForm  && <AddChemicalModal chemicals={chemicals} onClose={() => setShowAddForm(false)} onAdd={handleAddChemical} onSelectExisting={handleSelectExisting} showToast={showToast} />}
