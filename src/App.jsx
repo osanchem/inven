@@ -257,7 +257,7 @@ function LoginScreen({ schoolName }) {
     <div style={{ maxWidth:500, margin:"0 auto", background:"#F7FAFC", minHeight:"100vh", fontFamily:"'Pretendard',sans-serif", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 24px" }}>
       <style>{`@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');`}</style>
       <div style={{ fontSize:"64px", marginBottom:16 }}>🧪</div>
-      <h1 style={{ fontSize:"24px", fontWeight:800, color:"#1A202C", margin:"0 0 6px", textAlign:"center" }}>약품 재고관리</h1>
+      <h1 style={{ fontSize:"24px", fontWeight:800, color:"#1A202C", margin:"0 0 6px", textAlign:"center" }}>시약장관리</h1>
       <p style={{ fontSize:"13px", color:"#718096", margin:"0 0 32px", textAlign:"center" }}>{schoolName}</p>
 
       {mode !== "reset" && (
@@ -1518,7 +1518,7 @@ export default function LabInventoryApp() {
       <div style={{ padding:"12px 16px", background:"#fff", borderBottom:"1px solid #E2E8F0", position:"sticky", top:0, zIndex:100 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div>
-            <h1 style={{ margin:0, fontSize:"18px", fontWeight:800, color:"#1A202C", letterSpacing:"-0.5px" }}>🧪 약품 재고관리</h1>
+            <h1 style={{ margin:0, fontSize:"18px", fontWeight:800, color:"#1A202C", letterSpacing:"-0.5px" }}>🧪 시약장관리</h1>
             <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:2 }}>{SCHOOL_NAME}</div>
           </div>
           <div style={{ display:"flex", gap:8 }}>
