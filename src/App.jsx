@@ -127,13 +127,13 @@ const chemToApp = (r) => ({
   id: r.id, name: r.name, category: r.category,
   unit: r.unit, stock: Number(r.stock), minStock: Number(r.min_stock),
   location: r.location, hazards: r.hazards || [], msdsUrl: r.msds_url,
-  grade: r.grade, supplier: r.supplier, lastUpdated: r.last_updated,
+  memo: r.grade, supplier: r.supplier, lastUpdated: r.last_updated,
 });
 const chemToDb = (c) => ({
   id: c.id, name: c.name, category: c.category,
   unit: c.unit, stock: c.stock, min_stock: c.minStock,
   location: c.location, hazards: c.hazards, msds_url: c.msdsUrl,
-  grade: c.grade, supplier: c.supplier, last_updated: c.lastUpdated,
+  grade: c.memo, supplier: c.supplier, last_updated: c.lastUpdated,
 });
 const logToApp = (r) => ({
   id: r.id, chemicalId: r.chemical_id, type: r.type,
@@ -148,10 +148,10 @@ const csvCell = (val) => {
 };
 
 const exportToCSV = (chemicals) => {
-  const header = ["코드", "약품명", "분류", "단위", "현재재고", "보관위치", "등급", "공급처", "위험성", "최종수정"];
+  const header = ["코드", "약품명", "분류", "단위", "현재재고", "보관위치", "메모", "공급처", "위험성", "최종수정"];
   const rows = chemicals.map((c) => [
     c.id, c.name, c.category, c.unit,
-    c.stock, c.location, c.grade, c.supplier,
+    c.stock, c.location, c.memo, c.supplier,
     c.hazards.map((h) => GHS_PICTOGRAMS[h]?.label || h).join(", "),
     c.lastUpdated,
   ]);
@@ -381,14 +381,14 @@ function SetupWizard({ onComplete, showToast, schoolId }) {
     reader.onload = (ev) => {
       const rows = parseCSV(ev.target.result);
       if (rows.length === 0) { showToast("CSV 파일이 비어 있습니다.", "error"); return; }
-      // 열 순서: 약품명,분류,단위,현재재고,보관위치,등급,공급처,위험성코드
+      // 열 순서: 약품명,분류,단위,현재재고,보관위치,메모,공급처,위험성코드
       const chemicals = rows
         .map((row, i) => ({
           id: `C${String(i + 1).padStart(3, "0")}`,
           name: row[0] || "", category: row[1] || "",
           unit: row[2] || "mL", stock: Number(row[3]) || 0,
           minStock: 0, location: row[4] || "",
-          grade: row[5] || "", supplier: row[6] || "",
+          memo: row[5] || "", supplier: row[6] || "",
           hazards: row[7] ? row[7].split(",").map((h) => h.trim()).filter((h) => GHS_PICTOGRAMS[h]) : [],
           msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do",
           lastUpdated: new Date().toISOString().slice(0, 10),
@@ -615,7 +615,7 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
   const [form, setForm] = useState({
     name:"", category:"", unit:"mL",
     stock:"", minStock:"", location:"",
-    grade:"", supplier:"", hazards:[],
+    memo:"", supplier:"", hazards:[],
     msdsUrl:"https://www.kosha.or.kr/msds/MSDSInfo.do",
   });
   // suggestions: { existing: [...], presets: [...] }
@@ -652,7 +652,7 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
     setForm((f) => ({
       ...f,
       name: preset.name, category: preset.category,
-      unit: preset.unit, grade: preset.grade, hazards: preset.hazards,
+      unit: preset.unit, hazards: preset.hazards,
     }));
     setSuggestions({ existing: [], presets: [] });
     setAutoFilled(true);
@@ -769,7 +769,7 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
                       style={{ width:"100%", padding:"10px 12px", background:"none", border:"none", cursor:"pointer", textAlign:"left", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:"1px solid #EDF2F7" }}>
                       <div>
                         <div style={{ fontSize:"13px", fontWeight:600, color:"#1A202C" }}>{p.name}</div>
-                        <div style={{ fontSize:"11px", color:"#718096", marginTop:1 }}>{p.category} · {p.unit} · {p.grade}</div>
+                        <div style={{ fontSize:"11px", color:"#718096", marginTop:1 }}>{p.category} · {p.unit}</div>
                       </div>
                       <div style={{ display:"flex", gap:2, flexShrink:0, marginLeft:8 }}>
                         {p.hazards.slice(0, 4).map((h) => (
@@ -785,12 +785,31 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
           )}
         </div>
 
+        {/* 분류 (칩 + 직접입력) */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>분류 *</label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
+            {["산","염기","무기","유기","지시약"].map((cat) => (
+              <button key={cat} type="button" onClick={() => set("category", cat)}
+                style={{ padding:"5px 14px", borderRadius:20, border:"1.5px solid", cursor:"pointer", fontSize:"12px", fontWeight:600,
+                  borderColor: form.category === cat ? "#3182CE" : "#E2E8F0",
+                  background:  form.category === cat ? "#EBF8FF" : "#fff",
+                  color:       form.category === cat ? "#2B6CB0" : "#4A5568",
+                }}>
+                {cat}
+              </button>
+            ))}
+          </div>
+          <input value={form.category} onChange={(e) => set("category", e.target.value)}
+            placeholder="직접 입력 (예: 금속염)"
+            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+        </div>
+
         {/* 나머지 필드 */}
         {[
-          { label:"분류 *",    key:"category", placeholder:"예: 금속염" },
           { label:"공급처",    key:"supplier", placeholder:"예: 대정화금" },
           { label:"보관위치",  key:"location", placeholder:"예: E-1" },
-          { label:"등급",      key:"grade",    placeholder:"예: 특급" },
+          { label:"메모",      key:"memo",     placeholder:"예: 특급, 30% 등 기타 메모" },
           { label:"MSDS URL",  key:"msdsUrl",  placeholder:"MSDS 링크" },
         ].map(({ label, key, placeholder }) => (
           <div key={key} style={{ marginBottom:10 }}>
@@ -1336,7 +1355,7 @@ export default function LabInventoryApp() {
             <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:4 }}>최소 권장: {chem.minStock}{chem.unit}</div>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, fontSize:"13px" }}>
-            {[["분류",chem.category],["등급",chem.grade],["보관위치",chem.location],["공급처",chem.supplier],["코드",chem.id],["최종수정",chem.lastUpdated]].map(([label,value]) => (
+            {[["분류",chem.category],["메모",chem.memo],["보관위치",chem.location],["공급처",chem.supplier],["코드",chem.id],["최종수정",chem.lastUpdated]].map(([label,value]) => (
               <div key={label} style={{ background:"#F7FAFC", padding:"8px 10px", borderRadius:8 }}>
                 <div style={{ fontSize:"11px", color:"#A0AEC0", marginBottom:2 }}>{label}</div>
                 <div style={{ fontWeight:600, color:"#2D3748" }}>{value}</div>
