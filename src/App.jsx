@@ -20,16 +20,16 @@ const GHS_PICTOGRAMS = {
 
 // ─── Sample Data ───
 const SAMPLE_CHEMICALS = [
-  { id: "C001", name: "염산(HCl)",             category: "산",      unit: "mL", stock: 2500, minStock: 500,  location: "A-1", hazards: ["corrosive","toxic","irritant"],       msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-15" },
-  { id: "C002", name: "수산화나트륨(NaOH)",    category: "염기",    unit: "g",  stock: 1800, minStock: 300,  location: "A-2", hazards: ["corrosive","irritant"],               msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-10" },
-  { id: "C003", name: "에탄올(C₂H₅OH)",       category: "유기용매", unit: "mL", stock: 4000, minStock: 1000, location: "B-1", hazards: ["flammable","irritant"],               msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "95%",     supplier: "삼전순약", lastUpdated: "2025-02-18" },
-  { id: "C004", name: "황산(H₂SO₄)",          category: "산",      unit: "mL", stock: 1200, minStock: 300,  location: "A-1", hazards: ["corrosive","toxic","oxidizer"],        msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-01-28" },
-  { id: "C005", name: "아세톤(CH₃COCH₃)",     category: "유기용매", unit: "mL", stock: 3500, minStock: 800,  location: "B-2", hazards: ["flammable","irritant"],               msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "1급",     supplier: "삼전순약", lastUpdated: "2025-02-12" },
-  { id: "C006", name: "질산은(AgNO₃)",         category: "금속염",  unit: "g",  stock: 45,   minStock: 20,   location: "C-1", hazards: ["corrosive","oxidizer","environment"],  msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-05" },
-  { id: "C007", name: "페놀프탈레인",           category: "지시약",  unit: "g",  stock: 25,   minStock: 10,   location: "D-1", hazards: ["health","irritant"],                  msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "지시약용", supplier: "대정화금", lastUpdated: "2025-01-20" },
-  { id: "C008", name: "과산화수소(H₂O₂)",     category: "산화제",  unit: "mL", stock: 800,  minStock: 200,  location: "A-3", hazards: ["oxidizer","corrosive","irritant"],    msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "30%",     supplier: "삼전순약", lastUpdated: "2025-02-01" },
-  { id: "C009", name: "탄산나트륨(Na₂CO₃)",   category: "염기",    unit: "g",  stock: 2200, minStock: 400,  location: "A-2", hazards: ["irritant"],                           msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "1급",     supplier: "대정화금", lastUpdated: "2025-02-14" },
-  { id: "C010", name: "구리(Ⅱ)황산염(CuSO₄)", category: "금속염",  unit: "g",  stock: 350,  minStock: 100,  location: "C-2", hazards: ["irritant","environment"],             msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do", grade: "특급",    supplier: "삼전순약", lastUpdated: "2025-02-08" },
+  { id: "C001", name: "염산(HCl)",             category: "산",      unit: "mL", stock: 2500, minStock: 500,  location: "A-1", hazards: ["corrosive","toxic","irritant"],       msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-15" },
+  { id: "C002", name: "수산화나트륨(NaOH)",    category: "염기",    unit: "g",  stock: 1800, minStock: 300,  location: "A-2", hazards: ["corrosive","irritant"],               msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-10" },
+  { id: "C003", name: "에탄올(C₂H₅OH)",       category: "유기용매", unit: "mL", stock: 4000, minStock: 1000, location: "B-1", hazards: ["flammable","irritant"],               msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "95%",     supplier: "삼전순약", lastUpdated: "2025-02-18" },
+  { id: "C004", name: "황산(H₂SO₄)",          category: "산",      unit: "mL", stock: 1200, minStock: 300,  location: "A-1", hazards: ["corrosive","toxic","oxidizer"],        msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-01-28" },
+  { id: "C005", name: "아세톤(CH₃COCH₃)",     category: "유기용매", unit: "mL", stock: 3500, minStock: 800,  location: "B-2", hazards: ["flammable","irritant"],               msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "1급",     supplier: "삼전순약", lastUpdated: "2025-02-12" },
+  { id: "C006", name: "질산은(AgNO₃)",         category: "금속염",  unit: "g",  stock: 45,   minStock: 20,   location: "C-1", hazards: ["corrosive","oxidizer","environment"],  msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-05" },
+  { id: "C007", name: "페놀프탈레인",           category: "지시약",  unit: "g",  stock: 25,   minStock: 10,   location: "D-1", hazards: ["health","irritant"],                  msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "지시약용", supplier: "대정화금", lastUpdated: "2025-01-20" },
+  { id: "C008", name: "과산화수소(H₂O₂)",     category: "산화제",  unit: "mL", stock: 800,  minStock: 200,  location: "A-3", hazards: ["oxidizer","corrosive","irritant"],    msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "30%",     supplier: "삼전순약", lastUpdated: "2025-02-01" },
+  { id: "C009", name: "탄산나트륨(Na₂CO₃)",   category: "염기",    unit: "g",  stock: 2200, minStock: 400,  location: "A-2", hazards: ["irritant"],                           msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "1급",     supplier: "대정화금", lastUpdated: "2025-02-14" },
+  { id: "C010", name: "구리(Ⅱ)황산염(CuSO₄)", category: "금속염",  unit: "g",  stock: 350,  minStock: 100,  location: "C-2", hazards: ["irritant","environment"],             msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "삼전순약", lastUpdated: "2025-02-08" },
 ];
 const SAMPLE_LOGS = [
   { chemicalId: "C001", type: "out", amount: 100, user: "정OO", purpose: "산염기 적정 실험 (2학년)", date: "2025-02-19T09:30:00", note: "" },
@@ -390,7 +390,7 @@ function SetupWizard({ onComplete, showToast, schoolId }) {
           minStock: 0, location: row[4] || "",
           memo: row[5] || "", supplier: row[6] || "",
           hazards: row[7] ? row[7].split(",").map((h) => h.trim()).filter((h) => GHS_PICTOGRAMS[h]) : [],
-          msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do",
+          msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do",
           lastUpdated: new Date().toISOString().slice(0, 10),
         }))
         .filter((c) => c.name);
@@ -616,7 +616,7 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
     name:"", category:"", unit:"mL",
     stock:"", minStock:"", location:"",
     memo:"", supplier:"", hazards:[],
-    msdsUrl:"https://www.kosha.or.kr/msds/MSDSInfo.do",
+    msdsUrl:"https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do",
   });
   // suggestions: { existing: [...], presets: [...] }
   const [suggestions, setSuggestions] = useState({ existing: [], presets: [] });
@@ -810,7 +810,6 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
           { label:"공급처",    key:"supplier", placeholder:"예: 대정화금" },
           { label:"보관위치",  key:"location", placeholder:"예: E-1" },
           { label:"메모",      key:"memo",     placeholder:"예: 특급, 30% 등 기타 메모" },
-          { label:"MSDS URL",  key:"msdsUrl",  placeholder:"MSDS 링크" },
         ].map(({ label, key, placeholder }) => (
           <div key={key} style={{ marginBottom:10 }}>
             <label style={labelStyle}>{label}</label>
@@ -1379,12 +1378,6 @@ export default function LabInventoryApp() {
                   );
                 })}
           </div>
-          {chem.msdsUrl && (
-            <a href={chem.msdsUrl} target="_blank" rel="noopener noreferrer"
-              style={{ display:"block", marginTop:12, fontSize:"13px", color:"#3182CE", textDecoration:"none", fontWeight:600 }}>
-              📄 MSDS 상세보기 (KOSHA) →
-            </a>
-          )}
         </div>
 
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
@@ -1526,9 +1519,18 @@ export default function LabInventoryApp() {
               style={{ width:38, height:38, borderRadius:10, background:"#EBF8FF", border:"none", fontSize:"18px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>📷</button>
             <button onClick={() => setShowAddForm(true)}
               style={{ width:38, height:38, borderRadius:10, background:"#F0FFF4", border:"none", fontSize:"18px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>➕</button>
-            <button onClick={handleSignOut} title={user.email}
+            <a href="https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do" target="_blank" rel="noopener noreferrer"
+              title="MSDS 검색"
+              style={{ width:38, height:38, borderRadius:10, background:"#FFFBEB", border:"1.5px solid #F6E05E", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", textDecoration:"none", fontSize:"15px", fontWeight:700, color:"#744210" }}>
+              MSDS
+            </a>
+            <button onClick={handleSignOut} title={`로그아웃 (${user.email})`}
               style={{ width:38, height:38, borderRadius:10, border:"none", cursor:"pointer", background:"#EDF2F7", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ fontSize:"18px" }}>👤</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5568" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
             </button>
           </div>
         </div>
