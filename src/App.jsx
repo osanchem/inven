@@ -185,11 +185,11 @@ const parseCSV = (text) => {
 };
 
 const downloadCSVTemplate = () => {
-  // 열 순서: 약품명,분류,단위,현재재고,최소재고,보관위치,등급,공급처,위험성코드
-  const header = "약품명,분류,단위,현재재고,최소재고,보관위치,등급,공급처,위험성코드";
+  // 열 순서: 약품명,분류,단위,현재재고,보관위치,등급,공급처,위험성코드
+  const header = "약품명,분류,단위,현재재고,보관위치,등급,공급처,위험성코드";
   const rows = [
-    `염산(HCl),산,mL,2500,500,A-1,특급,대정화금,"corrosive,toxic,irritant"`,
-    `수산화나트륨(NaOH),염기,g,1800,300,A-2,특급,대정화금,"corrosive,irritant"`,
+    `염산(HCl),산,mL,2500,A-1,특급,대정화금,"corrosive,toxic,irritant"`,
+    `수산화나트륨(NaOH),염기,g,1800,A-2,특급,대정화금,"corrosive,irritant"`,
   ];
   const csv = "\uFEFF" + [header, ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -367,15 +367,15 @@ function SetupWizard({ onComplete, showToast, schoolId }) {
     reader.onload = (ev) => {
       const rows = parseCSV(ev.target.result);
       if (rows.length === 0) { showToast("CSV 파일이 비어 있습니다.", "error"); return; }
-      // 열 순서: 약품명,분류,단위,현재재고,최소재고,보관위치,등급,공급처,위험성코드
+      // 열 순서: 약품명,분류,단위,현재재고,보관위치,등급,공급처,위험성코드
       const chemicals = rows
         .map((row, i) => ({
           id: `C${String(i + 1).padStart(3, "0")}`,
           name: row[0] || "", category: row[1] || "",
           unit: row[2] || "mL", stock: Number(row[3]) || 0,
-          minStock: Number(row[4]) || 0, location: row[5] || "",
-          grade: row[6] || "", supplier: row[7] || "",
-          hazards: row[8] ? row[8].split(",").map((h) => h.trim()).filter((h) => GHS_PICTOGRAMS[h]) : [],
+          minStock: 0, location: row[4] || "",
+          grade: row[5] || "", supplier: row[6] || "",
+          hazards: row[7] ? row[7].split(",").map((h) => h.trim()).filter((h) => GHS_PICTOGRAMS[h]) : [],
           msdsUrl: "https://www.kosha.or.kr/msds/MSDSInfo.do",
           lastUpdated: new Date().toISOString().slice(0, 10),
         }))
