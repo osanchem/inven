@@ -42,65 +42,65 @@ const SAMPLE_LOGS = [
 // ─── GHS 자동완성 프리셋 (고교 실험실 주요 약품) ───
 const CHEMICAL_PRESETS = [
   // 산
-  { name:"염산(HCl)",               category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","irritant"] },
-  { name:"황산(H₂SO₄)",             category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","oxidizer"] },
-  { name:"질산(HNO₃)",              category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","oxidizer"] },
-  { name:"아세트산(CH₃COOH)",       category:"산",      unit:"mL", grade:"특급",    hazards:["flammable","corrosive","irritant"] },
-  { name:"인산(H₃PO₄)",             category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","irritant"] },
-  { name:"옥살산(H₂C₂O₄)",          category:"산",      unit:"g",  grade:"특급",    hazards:["toxic","irritant"] },
-  { name:"붕산(H₃BO₃)",             category:"산",      unit:"g",  grade:"특급",    hazards:["health","irritant"] },
+  { name:"염산(HCl)",               category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","irritant"],      aliases:["염화수소","염화수소산","HCl","hydrochloric acid"] },
+  { name:"황산(H₂SO₄)",             category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","oxidizer"],      aliases:["H₂SO₄","sulfuric acid","황산"] },
+  { name:"질산(HNO₃)",              category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","oxidizer"],      aliases:["HNO₃","nitric acid"] },
+  { name:"아세트산(CH₃COOH)",       category:"산",      unit:"mL", grade:"특급",    hazards:["flammable","corrosive","irritant"],  aliases:["초산","빙초산","acetic acid","CH₃COOH","식초산"] },
+  { name:"인산(H₃PO₄)",             category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","irritant"],             aliases:["H₃PO₄","phosphoric acid"] },
+  { name:"옥살산(H₂C₂O₄)",          category:"산",      unit:"g",  grade:"특급",    hazards:["toxic","irritant"],                 aliases:["수산","oxalic acid","H₂C₂O₄"] },
+  { name:"붕산(H₃BO₃)",             category:"산",      unit:"g",  grade:"특급",    hazards:["health","irritant"],                aliases:["boric acid","H₃BO₃"] },
   // 염기
-  { name:"수산화나트륨(NaOH)",       category:"염기",    unit:"g",  grade:"특급",    hazards:["corrosive","irritant"] },
-  { name:"수산화칼륨(KOH)",          category:"염기",    unit:"g",  grade:"특급",    hazards:["corrosive","irritant"] },
-  { name:"수산화칼슘(Ca(OH)₂)",      category:"염기",    unit:"g",  grade:"1급",     hazards:["irritant"] },
-  { name:"암모니아수(NH₃aq)",        category:"염기",    unit:"mL", grade:"특급",    hazards:["corrosive","toxic","irritant"] },
-  { name:"탄산나트륨(Na₂CO₃)",      category:"염기",    unit:"g",  grade:"1급",     hazards:["irritant"] },
-  { name:"탄산수소나트륨(NaHCO₃)",  category:"염기",    unit:"g",  grade:"1급",     hazards:[] },
+  { name:"수산화나트륨(NaOH)",       category:"염기",    unit:"g",  grade:"특급",    hazards:["corrosive","irritant"],             aliases:["가성소다","양잿물","NaOH","sodium hydroxide","caustic soda"] },
+  { name:"수산화칼륨(KOH)",          category:"염기",    unit:"g",  grade:"특급",    hazards:["corrosive","irritant"],             aliases:["가성칼리","KOH","potassium hydroxide","caustic potash"] },
+  { name:"수산화칼슘(Ca(OH)₂)",      category:"염기",    unit:"g",  grade:"1급",     hazards:["irritant"],                         aliases:["소석회","석회수","slaked lime","calcium hydroxide"] },
+  { name:"암모니아수(NH₃aq)",        category:"염기",    unit:"mL", grade:"특급",    hazards:["corrosive","toxic","irritant"],      aliases:["암모니아","NH₃","ammonia","ammonia water"] },
+  { name:"탄산나트륨(Na₂CO₃)",      category:"염기",    unit:"g",  grade:"1급",     hazards:["irritant"],                         aliases:["소다회","Na₂CO₃","sodium carbonate","soda ash","세탁소다"] },
+  { name:"탄산수소나트륨(NaHCO₃)",  category:"염기",    unit:"g",  grade:"1급",     hazards:[],                                   aliases:["베이킹소다","중조","NaHCO₃","sodium bicarbonate","baking soda"] },
   // 유기용매
-  { name:"에탄올(C₂H₅OH)",          category:"유기용매", unit:"mL", grade:"95%",    hazards:["flammable","irritant"] },
-  { name:"아세톤(CH₃COCH₃)",        category:"유기용매", unit:"mL", grade:"1급",     hazards:["flammable","irritant"] },
-  { name:"메탄올(CH₃OH)",           category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic"] },
-  { name:"에테르(C₂H₅OC₂H₅)",      category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","irritant"] },
-  { name:"톨루엔(C₇H₈)",            category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic","health"] },
-  { name:"헥산(C₆H₁₄)",             category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic","environment"] },
-  { name:"아세트산에틸(CH₃COOC₂H₅)",category:"유기용매", unit:"mL", grade:"1급",     hazards:["flammable","irritant"] },
-  { name:"클로로포름(CHCl₃)",        category:"유기용매", unit:"mL", grade:"특급",    hazards:["health","toxic"] },
+  { name:"에탄올(C₂H₅OH)",          category:"유기용매", unit:"mL", grade:"95%",    hazards:["flammable","irritant"],             aliases:["에틸알코올","주정","알코올","ethanol","ethyl alcohol","C₂H₅OH"] },
+  { name:"아세톤(CH₃COCH₃)",        category:"유기용매", unit:"mL", grade:"1급",     hazards:["flammable","irritant"],             aliases:["다이메틸케톤","dimethyl ketone","propanone","CH₃COCH₃"] },
+  { name:"메탄올(CH₃OH)",           category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic"],                aliases:["메틸알코올","목정","methanol","methyl alcohol","CH₃OH"] },
+  { name:"에테르(C₂H₅OC₂H₅)",      category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","irritant"],             aliases:["다이에틸에테르","diethyl ether","ether"] },
+  { name:"톨루엔(C₇H₈)",            category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic","health"],       aliases:["메틸벤젠","toluene","methylbenzene","C₇H₈"] },
+  { name:"헥산(C₆H₁₄)",             category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic","environment"],  aliases:["hexane","n-hexane","C₆H₁₄"] },
+  { name:"아세트산에틸(CH₃COOC₂H₅)",category:"유기용매", unit:"mL", grade:"1급",     hazards:["flammable","irritant"],             aliases:["에틸아세테이트","ethyl acetate","초산에틸"] },
+  { name:"클로로포름(CHCl₃)",        category:"유기용매", unit:"mL", grade:"특급",    hazards:["health","toxic"],                   aliases:["삼염화메탄","trichloromethane","chloroform","CHCl₃"] },
   // 산화제
-  { name:"과산화수소(H₂O₂)",         category:"산화제",  unit:"mL", grade:"30%",     hazards:["oxidizer","corrosive","irritant"] },
-  { name:"과망간산칼륨(KMnO₄)",      category:"산화제",  unit:"g",  grade:"특급",    hazards:["oxidizer","toxic","environment","irritant"] },
-  { name:"염소산칼륨(KClO₃)",        category:"산화제",  unit:"g",  grade:"1급",     hazards:["oxidizer","toxic"] },
-  { name:"중크롬산칼륨(K₂Cr₂O₇)",   category:"산화제",  unit:"g",  grade:"특급",    hazards:["oxidizer","toxic","corrosive","health","environment"] },
+  { name:"과산화수소(H₂O₂)",         category:"산화제",  unit:"mL", grade:"30%",     hazards:["oxidizer","corrosive","irritant"],  aliases:["산화수소","hydrogen peroxide","H₂O₂","옥시풀"] },
+  { name:"과망간산칼륨(KMnO₄)",      category:"산화제",  unit:"g",  grade:"특급",    hazards:["oxidizer","toxic","environment","irritant"], aliases:["과망간산칼리","카멜레온","KMnO₄","potassium permanganate"] },
+  { name:"염소산칼륨(KClO₃)",        category:"산화제",  unit:"g",  grade:"1급",     hazards:["oxidizer","toxic"],                 aliases:["KClO₃","potassium chlorate"] },
+  { name:"중크롬산칼륨(K₂Cr₂O₇)",   category:"산화제",  unit:"g",  grade:"특급",    hazards:["oxidizer","toxic","corrosive","health","environment"], aliases:["다이크롬산칼륨","K₂Cr₂O₇","potassium dichromate"] },
   // 금속염
-  { name:"질산은(AgNO₃)",            category:"금속염",  unit:"g",  grade:"특급",    hazards:["corrosive","oxidizer","environment"] },
-  { name:"황산구리(CuSO₄)",          category:"금속염",  unit:"g",  grade:"특급",    hazards:["irritant","environment"] },
-  { name:"황산철(Ⅱ)(FeSO₄)",        category:"금속염",  unit:"g",  grade:"1급",     hazards:["irritant"] },
-  { name:"염화철(Ⅲ)(FeCl₃)",        category:"금속염",  unit:"g",  grade:"1급",     hazards:["corrosive","irritant"] },
-  { name:"질산납(Pb(NO₃)₂)",         category:"금속염",  unit:"g",  grade:"1급",     hazards:["toxic","oxidizer","environment"] },
-  { name:"질산바륨(Ba(NO₃)₂)",       category:"금속염",  unit:"g",  grade:"1급",     hazards:["oxidizer","toxic"] },
-  { name:"염화나트륨(NaCl)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:[] },
-  { name:"염화칼슘(CaCl₂)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:["irritant"] },
-  { name:"황산나트륨(Na₂SO₄)",       category:"금속염",  unit:"g",  grade:"1급",     hazards:[] },
-  { name:"탄산칼슘(CaCO₃)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:[] },
-  { name:"아이오딘화칼륨(KI)",        category:"금속염",  unit:"g",  grade:"특급",    hazards:["irritant"] },
-  { name:"염화칼륨(KCl)",             category:"금속염",  unit:"g",  grade:"1급",     hazards:[] },
-  { name:"질산칼륨(KNO₃)",           category:"금속염",  unit:"g",  grade:"1급",     hazards:["oxidizer","irritant"] },
+  { name:"질산은(AgNO₃)",            category:"금속염",  unit:"g",  grade:"특급",    hazards:["corrosive","oxidizer","environment"], aliases:["AgNO₃","silver nitrate"] },
+  { name:"황산구리(CuSO₄)",          category:"금속염",  unit:"g",  grade:"특급",    hazards:["irritant","environment"],            aliases:["구리황산염","CuSO₄","copper sulfate","copper sulphate"] },
+  { name:"황산철(Ⅱ)(FeSO₄)",        category:"금속염",  unit:"g",  grade:"1급",     hazards:["irritant"],                          aliases:["황산제일철","FeSO₄","iron sulfate","ferrous sulfate"] },
+  { name:"염화철(Ⅲ)(FeCl₃)",        category:"금속염",  unit:"g",  grade:"1급",     hazards:["corrosive","irritant"],              aliases:["염화제이철","FeCl₃","ferric chloride","iron chloride"] },
+  { name:"질산납(Pb(NO₃)₂)",         category:"금속염",  unit:"g",  grade:"1급",     hazards:["toxic","oxidizer","environment"],    aliases:["lead nitrate","Pb(NO₃)₂"] },
+  { name:"질산바륨(Ba(NO₃)₂)",       category:"금속염",  unit:"g",  grade:"1급",     hazards:["oxidizer","toxic"],                  aliases:["barium nitrate","Ba(NO₃)₂"] },
+  { name:"염화나트륨(NaCl)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:[],                                    aliases:["소금","NaCl","sodium chloride","식염"] },
+  { name:"염화칼슘(CaCl₂)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:["irritant"],                          aliases:["CaCl₂","calcium chloride"] },
+  { name:"황산나트륨(Na₂SO₄)",       category:"금속염",  unit:"g",  grade:"1급",     hazards:[],                                    aliases:["Na₂SO₄","sodium sulfate"] },
+  { name:"탄산칼슘(CaCO₃)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:[],                                    aliases:["석회석","분필","CaCO₃","calcium carbonate"] },
+  { name:"아이오딘화칼륨(KI)",        category:"금속염",  unit:"g",  grade:"특급",    hazards:["irritant"],                          aliases:["요오드화칼륨","KI","potassium iodide"] },
+  { name:"염화칼륨(KCl)",             category:"금속염",  unit:"g",  grade:"1급",     hazards:[],                                    aliases:["KCl","potassium chloride"] },
+  { name:"질산칼륨(KNO₃)",           category:"금속염",  unit:"g",  grade:"1급",     hazards:["oxidizer","irritant"],               aliases:["초석","KNO₃","potassium nitrate","saltpeter"] },
   // 지시약
-  { name:"페놀프탈레인",               category:"지시약",  unit:"g",  grade:"지시약용", hazards:["health","irritant"] },
-  { name:"메틸오렌지",                 category:"지시약",  unit:"g",  grade:"지시약용", hazards:["health"] },
-  { name:"브로모티몰블루(BTB)",        category:"지시약",  unit:"g",  grade:"지시약용", hazards:["irritant"] },
-  { name:"리트머스",                   category:"지시약",  unit:"g",  grade:"지시약용", hazards:[] },
+  { name:"페놀프탈레인",               category:"지시약",  unit:"g",  grade:"지시약용", hazards:["health","irritant"],                aliases:["PP","phenolphthalein"] },
+  { name:"메틸오렌지",                 category:"지시약",  unit:"g",  grade:"지시약용", hazards:["health"],                            aliases:["MO","methyl orange"] },
+  { name:"브로모티몰블루(BTB)",        category:"지시약",  unit:"g",  grade:"지시약용", hazards:["irritant"],                          aliases:["BTB","bromothymol blue"] },
+  { name:"리트머스",                   category:"지시약",  unit:"g",  grade:"지시약용", hazards:[],                                    aliases:["litmus"] },
   // 기타
-  { name:"아이오딘(I₂)",              category:"기타",    unit:"g",  grade:"특급",    hazards:["toxic","irritant","environment"] },
-  { name:"포름알데히드(HCHO)",         category:"기타",    unit:"mL", grade:"37%",     hazards:["flammable","toxic","corrosive","health"] },
-  { name:"페놀(C₆H₅OH)",             category:"기타",    unit:"g",  grade:"특급",    hazards:["toxic","corrosive","health"] },
-  { name:"글리세롤(C₃H₈O₃)",         category:"기타",    unit:"mL", grade:"특급",    hazards:["irritant"] },
-  { name:"포도당(C₆H₁₂O₆)",          category:"기타",    unit:"g",  grade:"시약용",  hazards:[] },
-  { name:"녹말(전분)",                 category:"기타",    unit:"g",  grade:"시약용",  hazards:[] },
-  { name:"구연산(C₆H₈O₇)",           category:"기타",    unit:"g",  grade:"시약용",  hazards:["irritant"] },
-  { name:"마그네슘(Mg)",              category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable","irritant"] },
-  { name:"아연(Zn)",                  category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable","environment","irritant"] },
-  { name:"구리(Cu)",                  category:"기타",    unit:"g",  grade:"1급",     hazards:["environment","irritant"] },
-  { name:"철(Fe)",                    category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable"] },
+  { name:"아이오딘(I₂)",              category:"기타",    unit:"g",  grade:"특급",    hazards:["toxic","irritant","environment"],    aliases:["요오드","I₂","iodine"] },
+  { name:"포름알데히드(HCHO)",         category:"기타",    unit:"mL", grade:"37%",     hazards:["flammable","toxic","corrosive","health"], aliases:["폼알데하이드","포르말린","formaldehyde","formalin","HCHO"] },
+  { name:"페놀(C₆H₅OH)",             category:"기타",    unit:"g",  grade:"특급",    hazards:["toxic","corrosive","health"],        aliases:["석탄산","phenol","carbolic acid","C₆H₅OH"] },
+  { name:"글리세롤(C₃H₈O₃)",         category:"기타",    unit:"mL", grade:"특급",    hazards:["irritant"],                          aliases:["글리세린","glycerol","glycerin","glycerine","C₃H₈O₃"] },
+  { name:"포도당(C₆H₁₂O₆)",          category:"기타",    unit:"g",  grade:"시약용",  hazards:[],                                    aliases:["글루코스","glucose","dextrose","C₆H₁₂O₆"] },
+  { name:"녹말(전분)",                 category:"기타",    unit:"g",  grade:"시약용",  hazards:[],                                    aliases:["전분","starch","녹말"] },
+  { name:"구연산(C₆H₈O₇)",           category:"기타",    unit:"g",  grade:"시약용",  hazards:["irritant"],                          aliases:["시트르산","citric acid","C₆H₈O₇"] },
+  { name:"마그네슘(Mg)",              category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable","irritant"],              aliases:["Mg","magnesium"] },
+  { name:"아연(Zn)",                  category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable","environment","irritant"], aliases:["Zn","zinc"] },
+  { name:"구리(Cu)",                  category:"기타",    unit:"g",  grade:"1급",     hazards:["environment","irritant"],            aliases:["Cu","copper"] },
+  { name:"철(Fe)",                    category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable"],                         aliases:["Fe","iron"] },
 ];
 
 // ─── Utility Functions ───
@@ -113,6 +113,25 @@ const getStockStatus = (stock, minStock) => {
   if (r <= 1) return { label: "부족", color: "#E53E3E", bg: "#FED7D7" };
   if (r <= 2) return { label: "주의", color: "#DD6B20", bg: "#FEEBC8" };
   return { label: "충분", color: "#38A169", bg: "#C6F6D5" };
+};
+
+// ─── 초성 검색 ───
+const CHOSUNG_LIST = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const getChosung = (str) =>
+  str.split('').map(ch => {
+    const code = ch.charCodeAt(0) - 0xAC00;
+    if (code < 0 || code > 11171) return ch;
+    return CHOSUNG_LIST[Math.floor(code / 28 / 21)];
+  }).join('');
+
+const matchSearch = (query, chem) => {
+  if (!query.trim()) return true;
+  const q = query.trim();
+  const ql = q.toLowerCase();
+  const isCs = /^[ㄱ-ㅎ]+$/.test(q);
+  const targets = [chem.name, chem.id, chem.category, ...(chem.aliases || [])].filter(Boolean);
+  if (isCs) return targets.some(t => getChosung(t).includes(q));
+  return targets.some(t => t.toLowerCase().includes(ql));
 };
 
 // 단위 선택 옵션: {label, factor} — factor는 base 단위로 변환 시 곱하는 값
@@ -128,12 +147,14 @@ const chemToApp = (r) => ({
   unit: r.unit, stock: Number(r.stock), minStock: Number(r.min_stock),
   location: r.location, hazards: r.hazards || [], msdsUrl: r.msds_url,
   memo: r.grade, supplier: r.supplier, lastUpdated: r.last_updated,
+  aliases: r.aliases || [],
 });
 const chemToDb = (c) => ({
   id: c.id, name: c.name, category: c.category,
   unit: c.unit, stock: c.stock, min_stock: c.minStock,
   location: c.location, hazards: c.hazards, msds_url: c.msdsUrl,
   grade: c.memo, supplier: c.supplier, last_updated: c.lastUpdated,
+  aliases: c.aliases || [],
 });
 const logToApp = (r) => ({
   id: r.id, chemicalId: r.chemical_id, type: r.type,
@@ -615,9 +636,10 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
   const [form, setForm] = useState({
     name:"", category:"", unit:"mL",
     stock:"", minStock:"", location:"",
-    memo:"", supplier:"", hazards:[],
+    memo:"", supplier:"", hazards:[], aliases:[],
     msdsUrl:"https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do",
   });
+  const [aliasInput, setAliasInput] = useState("");
   // suggestions: { existing: [...], presets: [...] }
   const [suggestions, setSuggestions] = useState({ existing: [], presets: [] });
   const [autoFilled, setAutoFilled] = useState(false);
@@ -653,7 +675,9 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
       ...f,
       name: preset.name, category: preset.category,
       unit: preset.unit, hazards: preset.hazards,
+      aliases: preset.aliases || [],
     }));
+    setAliasInput((preset.aliases || []).join(", "));
     setSuggestions({ existing: [], presets: [] });
     setAutoFilled(true);
     setDupWarning(null);
@@ -673,7 +697,8 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
       setDupWarning(exact);
       return;
     }
-    onAdd({ ...form, id: nextId(), stock: Number(form.stock)||0, minStock: Number(form.minStock)||0, lastUpdated: new Date().toISOString().slice(0,10) });
+    const aliases = aliasInput.split(",").map(s => s.trim()).filter(Boolean);
+    onAdd({ ...form, aliases, id: nextId(), stock: Number(form.stock)||0, minStock: Number(form.minStock)||0, lastUpdated: new Date().toISOString().slice(0,10) });
   };
 
   return (
@@ -817,6 +842,20 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
               style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
           </div>
         ))}
+
+        {/* 별칭 (검색어) 입력 */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>별칭 / 다른 이름</label>
+          <input
+            value={aliasInput}
+            onChange={(e) => setAliasInput(e.target.value)}
+            placeholder="예: 에틸알코올, 주정, ethanol (쉼표로 구분)"
+            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }}
+          />
+          <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:4 }}>
+            관용명·영문명·화학식을 입력하면 검색 시 모두 찾을 수 있습니다.
+          </div>
+        </div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
           <div>
             <label style={labelStyle}>단위 *</label>
@@ -1177,11 +1216,9 @@ export default function LabInventoryApp() {
     else showToast("등록되지 않은 약품입니다.", "error");
   };
 
-  const filteredChemicals = chemicals.filter((c) => {
-    const q = searchQuery.toLowerCase();
-    return (c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q))
-      && (filterCategory === "all" || c.category === filterCategory);
-  });
+  const filteredChemicals = chemicals.filter((c) =>
+    matchSearch(searchQuery, c) && (filterCategory === "all" || c.category === filterCategory)
+  );
 
   // ─── Render: Dashboard ───
   const renderDashboard = () => (
@@ -1258,7 +1295,7 @@ export default function LabInventoryApp() {
     <div style={{ padding:"0 16px 100px" }}>
       {/* 검색 */}
       <div style={{ position:"relative", marginBottom:12 }}>
-        <input type="text" placeholder="약품명, 코드로 검색..."
+        <input type="text" placeholder="약품명, 별칭, 초성(ㅇㅌㄴ), 코드 검색..."
           value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
           style={{ ...inputStyle, paddingLeft:"36px", width:"100%", boxSizing:"border-box" }} />
         <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:"16px", color:"#A0AEC0" }}>🔍</span>
