@@ -810,6 +810,19 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
           )}
         </div>
 
+        {/* 농도·형태 네이밍 가이드 */}
+        <div style={{ background:"#F7FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:"10px 12px", marginBottom:12, fontSize:"11px", color:"#4A5568", lineHeight:1.8 }}>
+          <div style={{ fontWeight:700, color:"#2D3748", marginBottom:4 }}>💡 농도·형태가 다를 경우 약품명에 구분해서 입력하세요</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"2px 12px" }}>
+            <span><span style={{ color:"#3182CE", fontWeight:600 }}>염산(conc.)</span> 진한 염산</span>
+            <span><span style={{ color:"#3182CE", fontWeight:600 }}>염산 1M</span> 묽은 염산</span>
+            <span><span style={{ color:"#3182CE", fontWeight:600 }}>페놀프탈레인</span> 고체 시약</span>
+            <span><span style={{ color:"#3182CE", fontWeight:600 }}>페놀프탈레인 용액</span> 조제 용액</span>
+            <span><span style={{ color:"#3182CE", fontWeight:600 }}>에탄올 95%</span> 원액</span>
+            <span><span style={{ color:"#3182CE", fontWeight:600 }}>에탄올 70%</span> 희석액</span>
+          </div>
+        </div>
+
         {/* 분류 (칩 + 직접입력) */}
         <div style={{ marginBottom:10 }}>
           <label style={labelStyle}>분류 *</label>
