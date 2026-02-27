@@ -109,10 +109,11 @@ const formatDate = (dateStr) => {
   return `${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 };
 const getStockStatus = (stock, minStock) => {
+  if (stock === 0) return { label: "재고없음", color: "#E53E3E", bg: "#FED7D7" };
   const r = stock / minStock;
-  if (r <= 1) return { label: "부족", color: "#E53E3E", bg: "#FED7D7" };
-  if (r <= 2) return { label: "주의", color: "#DD6B20", bg: "#FEEBC8" };
-  return { label: "충분", color: "#38A169", bg: "#C6F6D5" };
+  if (r <= 1) return { label: "", color: "#E53E3E", bg: "#FED7D7" };
+  if (r <= 2) return { label: "", color: "#DD6B20", bg: "#FEEBC8" };
+  return { label: "", color: "#38A169", bg: "#C6F6D5" };
 };
 
 // ─── 초성 검색 ───
@@ -1371,7 +1372,7 @@ export default function LabInventoryApp() {
                 <div style={{ fontSize:"14px", fontWeight:700, color:"#1A202C" }}>{chem.name}</div>
                 <div style={{ fontSize:"11px", color:"#A0AEC0", fontFamily:"monospace" }}>{chem.id} · {chem.category}</div>
               </div>
-              <span style={{ fontSize:"11px", fontWeight:600, padding:"2px 8px", borderRadius:10, color:status.color, background:status.bg }}>{status.label}</span>
+              {status.label && <span style={{ fontSize:"11px", fontWeight:600, padding:"2px 8px", borderRadius:10, color:status.color, background:status.bg }}>{status.label}</span>}
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div style={{ display:"flex", gap:4 }}>
@@ -1417,7 +1418,7 @@ export default function LabInventoryApp() {
         <div style={{ ...cardStyle, marginBottom:16 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
             <h2 style={{ fontSize:"18px", fontWeight:700, color:"#1A202C", margin:0 }}>{chem.name}</h2>
-            <span style={{ fontSize:"12px", fontWeight:600, padding:"3px 10px", borderRadius:10, color:status.color, background:status.bg }}>{status.label}</span>
+            {status.label && <span style={{ fontSize:"12px", fontWeight:600, padding:"3px 10px", borderRadius:10, color:status.color, background:status.bg }}>{status.label}</span>}
           </div>
           <div style={{ textAlign:"center", padding:"16px 0", background:"#F7FAFC", borderRadius:12, marginBottom:16 }}>
             <div style={{ fontSize:"12px", color:"#718096", marginBottom:4 }}>현재 재고</div>
