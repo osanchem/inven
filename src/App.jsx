@@ -916,6 +916,148 @@ function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToa
   );
 }
 
+// ─── Edit Chemical Modal ───
+function EditChemicalModal({ chem, onClose, onUpdate, showToast }) {
+  const [form, setForm] = useState({
+    name: chem.name, category: chem.category, unit: chem.unit,
+    stock: String(chem.stock), minStock: String(chem.minStock),
+    location: chem.location || "", memo: chem.memo || "",
+    supplier: chem.supplier || "", hazards: chem.hazards || [],
+    aliases: chem.aliases || [], casNo: chem.casNo || "",
+    msdsUrl: chem.msdsUrl || "",
+  });
+  const [aliasInput, setAliasInput] = useState((chem.aliases || []).join(", "));
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const toggleHazard = (h) => setForm((f) => ({
+    ...f,
+    hazards: f.hazards.includes(h) ? f.hazards.filter((x) => x !== h) : [...f.hazards, h],
+  }));
+
+  const handleSubmit = () => {
+    if (!form.name.trim() || !form.category.trim() || !form.unit.trim()) {
+      showToast("약품명, 분류, 단위는 필수입니다.", "error"); return;
+    }
+    const aliases = aliasInput.split(",").map((s) => s.trim()).filter(Boolean);
+    onUpdate({
+      ...chem,
+      ...form,
+      aliases,
+      stock: Number(form.stock) || 0,
+      minStock: Number(form.minStock) || 0,
+      lastUpdated: new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:500, padding:"20px", maxHeight:"90vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <h3 style={{ margin:0, fontSize:"16px", fontWeight:700 }}>✏️ 약품 정보 수정</h3>
+          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"20px", cursor:"pointer", color:"#718096" }}>✕</button>
+        </div>
+
+        {/* 약품명 */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>약품명 *</label>
+          <input value={form.name} onChange={(e) => set("name", e.target.value)}
+            placeholder="약품명" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+        </div>
+
+        {/* 분류 칩 + 직접입력 */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>분류 *</label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
+            {["산","염기","무기","유기","지시약"].map((cat) => (
+              <button key={cat} type="button" onClick={() => set("category", cat)}
+                style={{ padding:"5px 14px", borderRadius:20, border:"1.5px solid", cursor:"pointer", fontSize:"12px", fontWeight:600,
+                  borderColor: form.category === cat ? "#3182CE" : "#E2E8F0",
+                  background:  form.category === cat ? "#EBF8FF" : "#fff",
+                  color:       form.category === cat ? "#2B6CB0" : "#4A5568",
+                }}>
+                {cat}
+              </button>
+            ))}
+          </div>
+          <input value={form.category} onChange={(e) => set("category", e.target.value)}
+            placeholder="직접 입력 (예: 금속염)"
+            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+        </div>
+
+        {/* 기타 텍스트 필드 */}
+        {[
+          { label:"공급처",   key:"supplier", placeholder:"예: 대정화금" },
+          { label:"보관위치", key:"location", placeholder:"예: E-1" },
+          { label:"메모",     key:"memo",     placeholder:"예: 특급, 30% 등 기타 메모" },
+        ].map(({ label, key, placeholder }) => (
+          <div key={key} style={{ marginBottom:10 }}>
+            <label style={labelStyle}>{label}</label>
+            <input value={form[key]} onChange={(e) => set(key, e.target.value)} placeholder={placeholder}
+              style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+          </div>
+        ))}
+
+        {/* 별칭 */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>별칭 / 다른 이름</label>
+          <input value={aliasInput} onChange={(e) => setAliasInput(e.target.value)}
+            placeholder="예: 에틸알코올, 주정, ethanol (쉼표로 구분)"
+            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+        </div>
+
+        {/* CAS No */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>CAS No. <span style={{ fontWeight:400, color:"#A0AEC0" }}>(선택)</span></label>
+          <input value={form.casNo} onChange={(e) => set("casNo", e.target.value)}
+            placeholder="예: 7647-01-0" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+        </div>
+
+        {/* 단위 / 재고 / 최소재고 */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
+          <div>
+            <label style={labelStyle}>단위 *</label>
+            <select value={form.unit} onChange={(e) => set("unit", e.target.value)}
+              style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }}>
+              {["mL","L","g","kg","개"].map((u) => <option key={u}>{u}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>현재 재고</label>
+            <input type="number" value={form.stock} onChange={(e) => set("stock", e.target.value)}
+              placeholder="0" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+          </div>
+          <div>
+            <label style={labelStyle}>최소 재고</label>
+            <input type="number" value={form.minStock} onChange={(e) => set("minStock", e.target.value)}
+              placeholder="0" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+          </div>
+        </div>
+
+        {/* GHS 위험성 */}
+        <div style={{ marginBottom:16 }}>
+          <label style={labelStyle}>GHS 위험성</label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {Object.entries(GHS_PICTOGRAMS).map(([key, val]) => (
+              <button key={key} onClick={() => toggleHazard(key)}
+                style={{ padding:"5px 10px", borderRadius:20, border:"1.5px solid", cursor:"pointer", fontSize:"12px", fontWeight:600,
+                  borderColor: form.hazards.includes(key) ? val.color : "#E2E8F0",
+                  background:  form.hazards.includes(key) ? val.color+"22" : "#fff",
+                  color:       form.hazards.includes(key) ? val.color : "#718096" }}>
+                {val.icon} {val.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={handleSubmit}
+          style={{ ...btnStyle, width:"100%", background:"#3182CE", color:"#fff", fontSize:"15px", padding:"14px" }}>
+          수정 저장
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Edit Log Modal ───
 function EditLogModal({ log, chem, onClose, onSave, onDelete }) {
   const unitOpts = getUnitOptions(chem?.unit || "");
@@ -1030,6 +1172,7 @@ export default function LabInventoryApp() {
   const [filterCategory, setFilterCategory] = useState("all");
   const [toast, setToast] = useState(null);
   const [confirmDeleteChem, setConfirmDeleteChem] = useState(false);
+  const [showEditChemical, setShowEditChemical] = useState(false);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -1192,6 +1335,20 @@ export default function LabInventoryApp() {
     setShowAddForm(false);
   };
 
+  // ─── 약품 정보 수정 ───
+  const handleUpdateChemical = async (updated) => {
+    if (IS_DEMO) {
+      setChemicals((prev) => prev.map((c) => c.id === updated.id ? updated : c));
+    } else {
+      const { error } = await supabase.from("chemicals").update(chemToDb(updated)).eq("id", updated.id);
+      if (error) { showToast("수정에 실패했습니다.", "error"); return; }
+      await fetchChemicals();
+    }
+    setSelectedChemical(updated);
+    showToast(`${updated.name} 수정 완료!`);
+    setShowEditChemical(false);
+  };
+
   // ─── 입출고 이력 삭제 ───
   const handleDeleteLog = async () => {
     const log = editingLog;
@@ -1335,7 +1492,7 @@ export default function LabInventoryApp() {
     <div style={{ padding:"0 16px 100px" }}>
       {/* 검색 */}
       <div style={{ position:"relative", marginBottom:12 }}>
-        <input type="text" placeholder="약품명, 별칭, 초성(ㅇㅌㄴ), 코드 검색..."
+        <input type="text" placeholder="약품명, 별칭, 초성(ㅇㅌㄴ) 검색..."
           value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
           style={{ ...inputStyle, paddingLeft:"36px", width:"100%", boxSizing:"border-box" }} />
         <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:"16px", color:"#A0AEC0" }}>🔍</span>
@@ -1370,7 +1527,7 @@ export default function LabInventoryApp() {
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:"14px", fontWeight:700, color:"#1A202C" }}>{chem.name}</div>
-                <div style={{ fontSize:"11px", color:"#A0AEC0", fontFamily:"monospace" }}>{chem.id} · {chem.category}</div>
+                <div style={{ fontSize:"11px", color:"#A0AEC0" }}>{chem.category}</div>
               </div>
               {status.label && <span style={{ fontSize:"11px", fontWeight:600, padding:"2px 8px", borderRadius:10, color:status.color, background:status.bg }}>{status.label}</span>}
             </div>
@@ -1431,7 +1588,7 @@ export default function LabInventoryApp() {
             <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:4 }}>최소 권장: {chem.minStock}{chem.unit}</div>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, fontSize:"13px" }}>
-            {[["분류",chem.category],["메모",chem.memo],["보관위치",chem.location],["공급처",chem.supplier],["코드",chem.id],["최종수정",chem.lastUpdated],...(chem.casNo?[["CAS No.",chem.casNo]]:[])]  .map(([label,value]) => (
+            {[["분류",chem.category],["메모",chem.memo],["보관위치",chem.location],["공급처",chem.supplier],["최종수정",chem.lastUpdated],...(chem.casNo?[["CAS No.",chem.casNo]]:[])]  .map(([label,value]) => (
               <div key={label} style={{ background:"#F7FAFC", padding:"8px 10px", borderRadius:8 }}>
                 <div style={{ fontSize:"11px", color:"#A0AEC0", marginBottom:2 }}>{label}</div>
                 <div style={{ fontWeight:600, color:"#2D3748" }}>{value}</div>
@@ -1463,8 +1620,12 @@ export default function LabInventoryApp() {
           <button onClick={() => { setLogFormData({ ...logFormData, chemicalId:chem.id, type:"in" }); setShowLogForm(true); }}
             style={{ ...btnStyle, background:"#38A169", color:"#fff" }}>📥 입고</button>
         </div>
-        <button onClick={() => setShowQRModal(true)}
+        <button onClick={() => setShowEditChemical(true)}
           style={{ ...btnStyle, width:"100%", background:"#EBF8FF", color:"#2B6CB0", marginBottom:10, border:"1.5px solid #BEE3F8" }}>
+          ✏️ 약품 정보 수정
+        </button>
+        <button onClick={() => setShowQRModal(true)}
+          style={{ ...btnStyle, width:"100%", background:"#F7FAFC", color:"#4A5568", marginBottom:10, border:"1.5px solid #E2E8F0" }}>
           📱 QR 코드 보기 / PNG 저장
         </button>
 
@@ -1670,6 +1831,7 @@ export default function LabInventoryApp() {
       {showScanner && <QRScanner chemicals={chemicals} onScan={handleScan} onClose={() => setShowScanner(false)} />}
       {showLogForm  && renderLogForm()}
       {showAddForm  && <AddChemicalModal chemicals={chemicals} onClose={() => setShowAddForm(false)} onAdd={handleAddChemical} onSelectExisting={handleSelectExisting} showToast={showToast} />}
+      {showEditChemical && selectedChemical && <EditChemicalModal chem={selectedChemical} onClose={() => setShowEditChemical(false)} onUpdate={handleUpdateChemical} showToast={showToast} />}
       {showQRModal  && selectedChemical && <QRCodeModal chem={selectedChemical} onClose={() => setShowQRModal(false)} />}
       {showEditLog  && editingLog && (
         <EditLogModal
