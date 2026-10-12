@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "deploy:test": "vite build && vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "data:ledger-seed": "node scripts/generate-ledger-seed.mjs",
     "package:school": "powershell -ExecutionPolicy Bypass -File scripts/package-school-deploy.ps1",
     "preview": "vite preview"
   },

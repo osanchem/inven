@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Html5QrcodeScanner } from "html5-qrcode";
+import { QRCodeCanvas } from "qrcode.react";
 import { EXPERIMENT_PRESETS } from "./experimentPresets";
 import * as api from "./gsheets";
 import { applyTransactions, convertToBase, findChemicalByName, getUnitOptions, makeId, normalizeChemical, normalizeLog, today, toArray } from "./domain/inventory";
 
 const SCHOOL_NAME = import.meta.env.VITE_SCHOOL_NAME || "오산고등학교 과학실";
+const APPS_SCRIPT_SOURCE = `${import.meta.env.BASE_URL}gsheets-backend.gs`;
 
 const SAMPLE_CHEMICALS = [
   { id: "C001", name: "염산", category: "산", unit: "mL", stock: 2500, minStock: 500, location: "A-1", hazards: ["corrosive"], msdsUrl: "", memo: "1 M", supplier: "대한화학", lastUpdated: "2026-03-01", aliases: ["HCl", "hydrochloric acid", "묽은 염산"], casNo: "7647-01-0" },
@@ -35,13 +37,29 @@ function SetupScreen({ onConnected, onDemo }) {
   const [copied, setCopied] = useState(false);
 
   const copyScript = async () => {
+    setError("");
     try {
-      const code = await fetch("/gsheets-backend.gs").then((r) => r.text());
+      const response = await fetch(APPS_SCRIPT_SOURCE);
+      if (!response.ok) throw new Error("Apps Script 코드를 불러오지 못했습니다.");
+      const code = await response.text();
       await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      window.open("/gsheets-backend.gs", "_blank");
+      try {
+        const response = await fetch(APPS_SCRIPT_SOURCE);
+        if (!response.ok) throw new Error("Apps Script 코드를 불러오지 못했습니다.");
+        const code = await response.text();
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob([code], { type: "text/plain;charset=utf-8" }));
+        link.download = "gsheets-backend.gs";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      } catch {
+        setError("스크립트 파일을 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.");
+      }
     }
   };
 
@@ -72,26 +90,40 @@ function SetupScreen({ onConnected, onDemo }) {
       <section className="setup-panel">
         <div className="brand-mark">LAB</div>
         <h1>시약장 관리 앱 연결하기</h1>
-        <p className="muted">선생님의 Google 계정에 데이터가 저장됩니다. 아래 4단계를 따라 하면 약 5분이면 완료됩니다.</p>
+        <p className="muted">선생님의 Google 계정에 데이터가 저장됩니다. 새 스프레드시트를 만든 뒤 원장 CSV 자료를 가져오세요.</p>
         <div className="steps">
           <div>
             <strong>1</strong>
             <span>
               <a href="https://sheets.new" target="_blank" rel="noopener noreferrer">Google 스프레드시트 새 파일</a>을 만드세요.
-              <span className="step-hint">파일 이름은 자유롭게 정하셔도 됩니다. (예: 과학실 시약 관리)</span>
+              <span className="step-hint">파일 이름은 자유롭게 정하세요. 기존 데이터가 없는 새 파일을 사용하세요.</span>
             </span>
           </div>
           <div>
             <strong>2</strong>
             <span>
               스프레드시트 상단 메뉴에서 <b>확장 프로그램 → Apps Script</b>를 클릭하세요.<br />
-              열린 편집 화면에서 기존 내용을 <b>전부 지운 뒤</b> 아래 버튼으로 코드를 복사해 붙여넣고 <b>저장(Ctrl+S)</b>하세요.
+              열린 편집 화면에서 기존 내용을 <b>전부 지운 뒤</b> 아래 버튼으로 백엔드 코드를 복사해 붙여넣고 <b>저장(Ctrl+S)</b>하세요.
               <br />
               <button className="copy-btn" onClick={copyScript}>{copied ? "✅ 복사 완료!" : "📋 백엔드 코드 복사"}</button>
             </span>
           </div>
           <div>
             <strong>3</strong>
+            <span>
+              저장한 뒤 함수 목록에서 <b>initializeDatabase</b>를 선택하고 <b>실행</b>을 한 번 누르세요. Google 권한 요청을 허용하면 앱에 필요한 4개 탭과 열 이름이 준비됩니다.
+              <span className="step-hint">기존 약품이나 출납 기록이 있는 시트에서는 중복 방지를 위해 초기화를 중단합니다.</span>
+            </span>
+          </div>
+          <div>
+            <strong>4</strong>
+            <span>
+              배포 패키지의 <b>data</b> 폴더에서 약품과 이력 CSV를 각각 가져옵니다. 스프레드시트의 <b>chemicals</b> 탭을 선택하고 <b>파일 → 가져오기</b>에서 <b>google_sheets_chemicals.csv</b>를 올린 뒤 가져오기 위치를 <b>현재 시트 바꾸기</b>로 지정하세요. <b>logs</b> 탭에도 <b>google_sheets_logs.csv</b>를 같은 방식으로 가져옵니다.
+              <span className="step-hint">수량은 PDF 원장의 마지막 기재 잔량입니다. 실제 재고를 확인한 뒤 출납을 시작하세요.</span>
+            </span>
+          </div>
+          <div>
+            <strong>5</strong>
             <span>
               Apps Script 화면 오른쪽 위 <b>배포 → 새 배포</b>를 클릭하세요.<br />
               <span className="step-table">
@@ -104,7 +136,7 @@ function SetupScreen({ onConnected, onDemo }) {
             </span>
           </div>
           <div>
-            <strong>4</strong>
+            <strong>6</strong>
             <span>
               배포 완료 화면에 표시된 <b>웹 앱 URL</b>을 복사해서 아래에 붙여넣으세요.
               <span className="step-hint">URL 형식 예시: https://script.google.com/macros/s/XXXXXXX/exec</span>
@@ -112,7 +144,7 @@ function SetupScreen({ onConnected, onDemo }) {
           </div>
         </div>
         <label className="field">
-          <span>4단계에서 복사한 웹 앱 URL</span>
+          <span>6단계에서 복사한 웹 앱 URL</span>
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" />
         </label>
         {error && <p className="error-text">{error}</p>}
@@ -137,6 +169,33 @@ function Modal({ title, children, onClose }) {
         {children}
       </section>
     </div>
+  );
+}
+
+function ChemicalQRCodeModal({ chemical, onClose }) {
+  const download = () => {
+    const canvas = document.getElementById("chemical-qr-canvas");
+    if (!canvas) return;
+    const link = document.createElement("a");
+    const safeName = String(chemical.name).replace(/[\\/:*?"<>|]/g, "_");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `${chemical.id}-${safeName}-QR.png`;
+    link.click();
+  };
+
+  return (
+    <Modal title="약품 QR 코드" onClose={onClose}>
+      <div className="qr-code-content">
+        <QRCodeCanvas id="chemical-qr-canvas" value={chemical.id} size={240} level="H" includeMargin />
+        <h3>{chemical.name}</h3>
+        <p>약품 코드: {chemical.id}</p>
+        <p className="muted">이 QR 코드를 스캔하면 등록된 약품을 찾습니다.</p>
+      </div>
+      <div className="button-row right">
+        <button className="ghost" onClick={onClose}>닫기</button>
+        <button className="primary" onClick={download}>PNG 저장</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -366,6 +425,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("전체");
   const [selectedChemical, setSelectedChemical] = useState(null);
+  const [qrChemical, setQrChemical] = useState(null);
   const [chemicalModal, setChemicalModal] = useState(null);
   const [logModal, setLogModal] = useState(false);
   const [logStartDate, setLogStartDate] = useState("");
@@ -561,7 +621,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <style>{styles}{printStyles}</style>
+      <style>{styles}{printStyles}{qrStyles}</style>
       {demoMode && <div className="demo-banner">데모 모드 · Google Sheets URL을 설정하면 저장됩니다.</div>}
       <header className="app-header">
         <div><h1>시약장 관리</h1><p>{SCHOOL_NAME}</p></div>
@@ -712,11 +772,13 @@ export default function App() {
           <div className="button-row right">
             <button className="danger" onClick={() => removeChemical(selectedChemical)}>삭제</button>
             <button className="ghost" onClick={() => setChemicalModal(selectedChemical)}>수정</button>
+            <button className="ghost" onClick={() => setQrChemical(selectedChemical)}>QR 코드</button>
             <button className="primary" onClick={() => { setLogModal({ chemicalId: selectedChemical.id, type: "out", amount: "", unit: selectedChemical.unit, user: "", purpose: "", note: "" }); }}>입출고</button>
           </div>
         </Modal>
       )}
 
+      {qrChemical && <ChemicalQRCodeModal chemical={qrChemical} onClose={() => setQrChemical(null)} />}
       {chemicalModal && <ChemicalForm initial={chemicalModal} onSave={saveChemical} onClose={() => setChemicalModal(null)} />}
       {logModal && <LogForm chemicals={chemicals} initial={typeof logModal === "object" ? logModal : emptyLog} onSave={saveLog} onClose={() => setLogModal(false)} />}
       {toast && <div className="toast">{toast}</div>}
@@ -760,4 +822,12 @@ const printStyles = `
   .print-footer{margin-top:18px;text-align:right;font-size:10pt}
 }
 @media(max-width:600px){.log-print-toolbar{align-items:stretch}.log-print-toolbar label{flex:1 1 130px}.log-print-toolbar button{flex:1 1 auto}}
+`;
+
+const qrStyles = `
+.qr-code-content{display:flex;flex-direction:column;align-items:center;text-align:center;padding:8px 0 18px}
+.qr-code-content canvas{max-width:100%;height:auto}
+.qr-code-content h3{margin:16px 0 4px;font-size:18px}
+.qr-code-content p{margin:3px 0;color:#4b5565}
+.qr-code-content .muted{margin-top:8px;color:#6b7688;font-size:13px}
 `;

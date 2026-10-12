@@ -8,6 +8,44 @@ const SHEETS = {
   experiment_chemicals: ["experimentId", "chemicalName", "amount", "unit", "note"],
 };
 
+function initializeDatabase() {
+  return withScriptLock_(function () {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const existing = {};
+    const rowCounts = {};
+
+    Object.keys(SHEETS).forEach(function (name) {
+      const sh = ss.getSheetByName(name);
+      existing[name] = sh;
+      rowCounts[name] = sh ? sh.getLastRow() : 0;
+      if (sh && rowCounts[name] > 0 && !hasHeaders_(sh, SHEETS[name])) {
+        throw new Error("'" + name + "' 시트의 열 이름이 예상과 다릅니다. 기존 데이터를 보호하기 위해 초기화를 중단했습니다.");
+      }
+    });
+
+    if (rowCounts.chemicals > 1 || rowCounts.logs > 1) {
+      throw new Error("'chemicals' 또는 'logs' 시트에 데이터가 있습니다. 중복 입력을 막기 위해 초기화를 중단했습니다. 기존 데이터가 없는 새 스프레드시트에서 실행하세요.");
+    }
+
+    Object.keys(SHEETS).forEach(function (name) {
+      const sh = existing[name] || ss.insertSheet(name);
+      existing[name] = sh;
+      if (rowCounts[name] === 0) sh.getRange(1, 1, 1, SHEETS[name].length).setValues([SHEETS[name]]);
+      sh.setFrozenRows(1);
+      sh.getRange(1, 1, 1, SHEETS[name].length).setFontWeight("bold").setBackground("#dbeafe");
+    });
+
+    const message = "시트 준비 완료. 제공된 약품 CSV와 이력 CSV를 각각 가져오세요.";
+    ss.toast(message, "시약장 데이터베이스", 8);
+    return message;
+  });
+}
+
+function hasHeaders_(sh, headers) {
+  const values = sh.getRange(1, 1, 1, headers.length).getValues()[0];
+  return headers.every(function (header, index) { return values[index] === header; });
+}
+
 function doGet(e) {
   const action = (e && e.parameter && e.parameter.action) || "";
   const p = (e && e.parameter) || {};
