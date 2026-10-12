@@ -1,1863 +1,763 @@
-import { useState, useEffect, useRef } from "react";
-import { Html5Qrcode } from "html5-qrcode";
-import { QRCodeSVG } from "qrcode.react";
-import { supabase, IS_DEMO } from "./supabase";
+import { useEffect, useMemo, useState } from "react";
+import { Html5QrcodeScanner } from "html5-qrcode";
+import { EXPERIMENT_PRESETS } from "./experimentPresets";
+import * as api from "./gsheets";
+import { applyTransactions, convertToBase, findChemicalByName, getUnitOptions, makeId, normalizeChemical, normalizeLog, today, toArray } from "./domain/inventory";
 
-const SCHOOL_NAME = import.meta.env.VITE_SCHOOL_NAME || "과학실험실";
+const SCHOOL_NAME = import.meta.env.VITE_SCHOOL_NAME || "오산고등학교 과학실";
 
-// ─── GHS Hazard Data ───
-const GHS_PICTOGRAMS = {
-  flammable:   { icon: "🔥", label: "인화성",   color: "#E53E3E" },
-  oxidizer:    { icon: "⭕", label: "산화성",   color: "#DD6B20" },
-  toxic:       { icon: "☠️", label: "급성독성", color: "#1A202C" },
-  corrosive:   { icon: "⚗️", label: "부식성",   color: "#805AD5" },
-  irritant:    { icon: "⚠️", label: "자극성",   color: "#D69E2E" },
-  health:      { icon: "🫁", label: "건강유해", color: "#3182CE" },
-  environment: { icon: "🌿", label: "환경유해", color: "#38A169" },
-  gas:         { icon: "🫧", label: "고압가스", color: "#4A5568" },
-  explosive:   { icon: "💥", label: "폭발성",   color: "#C53030" },
-};
-
-// ─── Sample Data ───
 const SAMPLE_CHEMICALS = [
-  { id: "C001", name: "염산(HCl)",             category: "산",      unit: "mL", stock: 2500, minStock: 500,  location: "A-1", hazards: ["corrosive","toxic","irritant"],       msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-15" },
-  { id: "C002", name: "수산화나트륨(NaOH)",    category: "염기",    unit: "g",  stock: 1800, minStock: 300,  location: "A-2", hazards: ["corrosive","irritant"],               msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-10" },
-  { id: "C003", name: "에탄올(C₂H₅OH)",       category: "유기용매", unit: "mL", stock: 4000, minStock: 1000, location: "B-1", hazards: ["flammable","irritant"],               msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "95%",     supplier: "삼전순약", lastUpdated: "2025-02-18" },
-  { id: "C004", name: "황산(H₂SO₄)",          category: "산",      unit: "mL", stock: 1200, minStock: 300,  location: "A-1", hazards: ["corrosive","toxic","oxidizer"],        msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-01-28" },
-  { id: "C005", name: "아세톤(CH₃COCH₃)",     category: "유기용매", unit: "mL", stock: 3500, minStock: 800,  location: "B-2", hazards: ["flammable","irritant"],               msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "1급",     supplier: "삼전순약", lastUpdated: "2025-02-12" },
-  { id: "C006", name: "질산은(AgNO₃)",         category: "금속염",  unit: "g",  stock: 45,   minStock: 20,   location: "C-1", hazards: ["corrosive","oxidizer","environment"],  msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "대정화금", lastUpdated: "2025-02-05" },
-  { id: "C007", name: "페놀프탈레인",           category: "지시약",  unit: "g",  stock: 25,   minStock: 10,   location: "D-1", hazards: ["health","irritant"],                  msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "지시약용", supplier: "대정화금", lastUpdated: "2025-01-20" },
-  { id: "C008", name: "과산화수소(H₂O₂)",     category: "산화제",  unit: "mL", stock: 800,  minStock: 200,  location: "A-3", hazards: ["oxidizer","corrosive","irritant"],    msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "30%",     supplier: "삼전순약", lastUpdated: "2025-02-01" },
-  { id: "C009", name: "탄산나트륨(Na₂CO₃)",   category: "염기",    unit: "g",  stock: 2200, minStock: 400,  location: "A-2", hazards: ["irritant"],                           msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "1급",     supplier: "대정화금", lastUpdated: "2025-02-14" },
-  { id: "C010", name: "구리(Ⅱ)황산염(CuSO₄)", category: "금속염",  unit: "g",  stock: 350,  minStock: 100,  location: "C-2", hazards: ["irritant","environment"],             msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do", grade: "특급",    supplier: "삼전순약", lastUpdated: "2025-02-08" },
-];
-const SAMPLE_LOGS = [
-  { chemicalId: "C001", type: "out", amount: 100, user: "정OO", purpose: "산염기 적정 실험 (2학년)", date: "2025-02-19T09:30:00", note: "" },
-  { chemicalId: "C003", type: "out", amount: 500, user: "김OO", purpose: "연소 반응 실험 (1학년)",   date: "2025-02-19T10:15:00", note: "" },
-  { chemicalId: "C002", type: "in",  amount: 500, user: "정OO", purpose: "신규 입고",               date: "2025-02-18T14:00:00", note: "대정화금 발주분" },
-  { chemicalId: "C006", type: "out", amount: 5,   user: "박OO", purpose: "앙금 생성 반응 (2학년)", date: "2025-02-18T11:00:00", note: "" },
-  { chemicalId: "C005", type: "out", amount: 200, user: "정OO", purpose: "기구 세척",               date: "2025-02-17T16:00:00", note: "" },
+  { id: "C001", name: "염산", category: "산", unit: "mL", stock: 2500, minStock: 500, location: "A-1", hazards: ["corrosive"], msdsUrl: "", memo: "1 M", supplier: "대한화학", lastUpdated: "2026-03-01", aliases: ["HCl", "hydrochloric acid", "묽은 염산"], casNo: "7647-01-0" },
+  { id: "C002", name: "수산화 나트륨", category: "염기", unit: "g", stock: 1800, minStock: 300, location: "A-2", hazards: ["corrosive"], msdsUrl: "", memo: "고체", supplier: "대한화학", lastUpdated: "2026-03-01", aliases: ["NaOH", "가성소다", "sodium hydroxide"], casNo: "1310-73-2" },
+  { id: "C003", name: "에탄올", category: "유기 용매", unit: "mL", stock: 4000, minStock: 1000, location: "B-1", hazards: ["flammable"], msdsUrl: "", memo: "95%", supplier: "일진시약", lastUpdated: "2026-03-01", aliases: ["ethyl alcohol", "C2H5OH"], casNo: "64-17-5" },
+  { id: "C004", name: "황산구리(II)", category: "금속염", unit: "g", stock: 350, minStock: 100, location: "C-2", hazards: ["irritant"], msdsUrl: "", memo: "5수화물", supplier: "일진시약", lastUpdated: "2026-03-01", aliases: ["황산구리", "CuSO4", "copper sulfate"], casNo: "7758-98-7" },
+  { id: "C005", name: "증류수", category: "기타", unit: "mL", stock: 20000, minStock: 5000, location: "W-1", hazards: [], msdsUrl: "", memo: "", supplier: "자체", lastUpdated: "2026-03-01", aliases: ["물", "distilled water"], casNo: "" },
+  { id: "C006", name: "과산화 수소", category: "산화제", unit: "mL", stock: 800, minStock: 200, location: "A-3", hazards: ["oxidizer"], msdsUrl: "", memo: "30%", supplier: "대한화학", lastUpdated: "2026-03-01", aliases: ["H2O2", "hydrogen peroxide"], casNo: "7722-84-1" },
+  { id: "C007", name: "염화 나트륨", category: "염", unit: "g", stock: 2500, minStock: 500, location: "C-1", hazards: [], msdsUrl: "", memo: "", supplier: "대한화학", lastUpdated: "2026-03-01", aliases: ["소금", "NaCl", "sodium chloride"], casNo: "7647-14-5" },
+  { id: "C008", name: "요오드 용액", category: "지시약", unit: "mL", stock: 300, minStock: 100, location: "D-1", hazards: ["irritant"], msdsUrl: "", memo: "", supplier: "대한화학", lastUpdated: "2026-03-01", aliases: ["아이오딘", "iodine"], casNo: "" },
 ];
 
-// ─── GHS 자동완성 프리셋 (고교 실험실 주요 약품) ───
-const CHEMICAL_PRESETS = [
-  // 산
-  { name:"염산(HCl)",               category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","irritant"],      aliases:["염화수소","염화수소산","HCl","hydrochloric acid"],          casNo:"7647-01-0" },
-  { name:"황산(H₂SO₄)",             category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","oxidizer"],      aliases:["H₂SO₄","sulfuric acid","황산"],                            casNo:"7664-93-9" },
-  { name:"질산(HNO₃)",              category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","toxic","oxidizer"],      aliases:["HNO₃","nitric acid"],                                      casNo:"7697-37-2" },
-  { name:"아세트산(CH₃COOH)",       category:"산",      unit:"mL", grade:"특급",    hazards:["flammable","corrosive","irritant"],  aliases:["초산","빙초산","acetic acid","CH₃COOH","식초산"],          casNo:"64-19-7" },
-  { name:"인산(H₃PO₄)",             category:"산",      unit:"mL", grade:"특급",    hazards:["corrosive","irritant"],             aliases:["H₃PO₄","phosphoric acid"],                                 casNo:"7664-38-2" },
-  { name:"옥살산(H₂C₂O₄)",          category:"산",      unit:"g",  grade:"특급",    hazards:["toxic","irritant"],                 aliases:["수산","oxalic acid","H₂C₂O₄"],                             casNo:"144-62-7" },
-  { name:"붕산(H₃BO₃)",             category:"산",      unit:"g",  grade:"특급",    hazards:["health","irritant"],                aliases:["boric acid","H₃BO₃"],                                      casNo:"10043-35-3" },
-  // 염기
-  { name:"수산화나트륨(NaOH)",       category:"염기",    unit:"g",  grade:"특급",    hazards:["corrosive","irritant"],             aliases:["가성소다","양잿물","NaOH","sodium hydroxide","caustic soda"], casNo:"1310-73-2" },
-  { name:"수산화칼륨(KOH)",          category:"염기",    unit:"g",  grade:"특급",    hazards:["corrosive","irritant"],             aliases:["가성칼리","KOH","potassium hydroxide","caustic potash"],    casNo:"1310-58-3" },
-  { name:"수산화칼슘(Ca(OH)₂)",      category:"염기",    unit:"g",  grade:"1급",     hazards:["irritant"],                         aliases:["소석회","석회수","slaked lime","calcium hydroxide"],        casNo:"1305-62-0" },
-  { name:"암모니아수(NH₃aq)",        category:"염기",    unit:"mL", grade:"특급",    hazards:["corrosive","toxic","irritant"],      aliases:["암모니아","NH₃","ammonia","ammonia water"],                 casNo:"1336-21-6" },
-  { name:"탄산나트륨(Na₂CO₃)",      category:"염기",    unit:"g",  grade:"1급",     hazards:["irritant"],                         aliases:["소다회","Na₂CO₃","sodium carbonate","soda ash","세탁소다"], casNo:"497-19-8" },
-  { name:"탄산수소나트륨(NaHCO₃)",  category:"염기",    unit:"g",  grade:"1급",     hazards:[],                                   aliases:["베이킹소다","중조","NaHCO₃","sodium bicarbonate","baking soda"], casNo:"144-55-8" },
-  // 유기용매
-  { name:"에탄올(C₂H₅OH)",          category:"유기용매", unit:"mL", grade:"95%",    hazards:["flammable","irritant"],             aliases:["에틸알코올","주정","알코올","ethanol","ethyl alcohol","C₂H₅OH"], casNo:"64-17-5" },
-  { name:"아세톤(CH₃COCH₃)",        category:"유기용매", unit:"mL", grade:"1급",     hazards:["flammable","irritant"],             aliases:["다이메틸케톤","dimethyl ketone","propanone","CH₃COCH₃"],   casNo:"67-64-1" },
-  { name:"메탄올(CH₃OH)",           category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic"],                aliases:["메틸알코올","목정","methanol","methyl alcohol","CH₃OH"],    casNo:"67-56-1" },
-  { name:"에테르(C₂H₅OC₂H₅)",      category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","irritant"],             aliases:["다이에틸에테르","diethyl ether","ether"],                   casNo:"60-29-7" },
-  { name:"톨루엔(C₇H₈)",            category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic","health"],       aliases:["메틸벤젠","toluene","methylbenzene","C₇H₈"],               casNo:"108-88-3" },
-  { name:"헥산(C₆H₁₄)",             category:"유기용매", unit:"mL", grade:"특급",    hazards:["flammable","toxic","environment"],  aliases:["hexane","n-hexane","C₆H₁₄"],                               casNo:"110-54-3" },
-  { name:"아세트산에틸(CH₃COOC₂H₅)",category:"유기용매", unit:"mL", grade:"1급",     hazards:["flammable","irritant"],             aliases:["에틸아세테이트","ethyl acetate","초산에틸"],                casNo:"141-78-6" },
-  { name:"클로로포름(CHCl₃)",        category:"유기용매", unit:"mL", grade:"특급",    hazards:["health","toxic"],                   aliases:["삼염화메탄","trichloromethane","chloroform","CHCl₃"],       casNo:"67-66-3" },
-  // 산화제
-  { name:"과산화수소(H₂O₂)",         category:"산화제",  unit:"mL", grade:"30%",     hazards:["oxidizer","corrosive","irritant"],  aliases:["산화수소","hydrogen peroxide","H₂O₂","옥시풀"],            casNo:"7722-84-1" },
-  { name:"과망간산칼륨(KMnO₄)",      category:"산화제",  unit:"g",  grade:"특급",    hazards:["oxidizer","toxic","environment","irritant"], aliases:["과망간산칼리","카멜레온","KMnO₄","potassium permanganate"], casNo:"7722-64-7" },
-  { name:"염소산칼륨(KClO₃)",        category:"산화제",  unit:"g",  grade:"1급",     hazards:["oxidizer","toxic"],                 aliases:["KClO₃","potassium chlorate"],                              casNo:"3811-04-9" },
-  { name:"중크롬산칼륨(K₂Cr₂O₇)",   category:"산화제",  unit:"g",  grade:"특급",    hazards:["oxidizer","toxic","corrosive","health","environment"], aliases:["다이크롬산칼륨","K₂Cr₂O₇","potassium dichromate"], casNo:"7778-50-9" },
-  // 금속염
-  { name:"질산은(AgNO₃)",            category:"금속염",  unit:"g",  grade:"특급",    hazards:["corrosive","oxidizer","environment"], aliases:["AgNO₃","silver nitrate"],                                 casNo:"7761-88-8" },
-  { name:"황산구리(CuSO₄)",          category:"금속염",  unit:"g",  grade:"특급",    hazards:["irritant","environment"],            aliases:["구리황산염","CuSO₄","copper sulfate","copper sulphate"],   casNo:"7758-98-7" },
-  { name:"황산철(Ⅱ)(FeSO₄)",        category:"금속염",  unit:"g",  grade:"1급",     hazards:["irritant"],                          aliases:["황산제일철","FeSO₄","iron sulfate","ferrous sulfate"],      casNo:"7720-78-7" },
-  { name:"염화철(Ⅲ)(FeCl₃)",        category:"금속염",  unit:"g",  grade:"1급",     hazards:["corrosive","irritant"],              aliases:["염화제이철","FeCl₃","ferric chloride","iron chloride"],     casNo:"7705-08-0" },
-  { name:"질산납(Pb(NO₃)₂)",         category:"금속염",  unit:"g",  grade:"1급",     hazards:["toxic","oxidizer","environment"],    aliases:["lead nitrate","Pb(NO₃)₂"],                                 casNo:"10099-74-8" },
-  { name:"질산바륨(Ba(NO₃)₂)",       category:"금속염",  unit:"g",  grade:"1급",     hazards:["oxidizer","toxic"],                  aliases:["barium nitrate","Ba(NO₃)₂"],                               casNo:"10022-31-8" },
-  { name:"염화나트륨(NaCl)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:[],                                    aliases:["소금","NaCl","sodium chloride","식염"],                     casNo:"7647-14-5" },
-  { name:"염화칼슘(CaCl₂)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:["irritant"],                          aliases:["CaCl₂","calcium chloride"],                                casNo:"10043-52-4" },
-  { name:"황산나트륨(Na₂SO₄)",       category:"금속염",  unit:"g",  grade:"1급",     hazards:[],                                    aliases:["Na₂SO₄","sodium sulfate"],                                 casNo:"7757-82-6" },
-  { name:"탄산칼슘(CaCO₃)",          category:"금속염",  unit:"g",  grade:"1급",     hazards:[],                                    aliases:["석회석","분필","CaCO₃","calcium carbonate"],               casNo:"471-34-1" },
-  { name:"아이오딘화칼륨(KI)",        category:"금속염",  unit:"g",  grade:"특급",    hazards:["irritant"],                          aliases:["요오드화칼륨","KI","potassium iodide"],                     casNo:"7681-11-0" },
-  { name:"염화칼륨(KCl)",             category:"금속염",  unit:"g",  grade:"1급",     hazards:[],                                    aliases:["KCl","potassium chloride"],                                 casNo:"7447-40-7" },
-  { name:"질산칼륨(KNO₃)",           category:"금속염",  unit:"g",  grade:"1급",     hazards:["oxidizer","irritant"],               aliases:["초석","KNO₃","potassium nitrate","saltpeter"],             casNo:"7757-79-1" },
-  // 지시약
-  { name:"페놀프탈레인",               category:"지시약",  unit:"g",  grade:"지시약용", hazards:["health","irritant"],                aliases:["PP","phenolphthalein"],                                     casNo:"77-09-8" },
-  { name:"메틸오렌지",                 category:"지시약",  unit:"g",  grade:"지시약용", hazards:["health"],                            aliases:["MO","methyl orange"],                                       casNo:"547-58-0" },
-  { name:"브로모티몰블루(BTB)",        category:"지시약",  unit:"g",  grade:"지시약용", hazards:["irritant"],                          aliases:["BTB","bromothymol blue"],                                   casNo:"76-59-5" },
-  { name:"리트머스",                   category:"지시약",  unit:"g",  grade:"지시약용", hazards:[],                                    aliases:["litmus"],                                                   casNo:"1393-92-6" },
-  // 기타
-  { name:"아이오딘(I₂)",              category:"기타",    unit:"g",  grade:"특급",    hazards:["toxic","irritant","environment"],    aliases:["요오드","I₂","iodine"],                                     casNo:"7553-56-2" },
-  { name:"포름알데히드(HCHO)",         category:"기타",    unit:"mL", grade:"37%",     hazards:["flammable","toxic","corrosive","health"], aliases:["폼알데하이드","포르말린","formaldehyde","formalin","HCHO"], casNo:"50-00-0" },
-  { name:"페놀(C₆H₅OH)",             category:"기타",    unit:"g",  grade:"특급",    hazards:["toxic","corrosive","health"],        aliases:["석탄산","phenol","carbolic acid","C₆H₅OH"],                casNo:"108-95-2" },
-  { name:"글리세롤(C₃H₈O₃)",         category:"기타",    unit:"mL", grade:"특급",    hazards:["irritant"],                          aliases:["글리세린","glycerol","glycerin","glycerine","C₃H₈O₃"],    casNo:"56-81-5" },
-  { name:"포도당(C₆H₁₂O₆)",          category:"기타",    unit:"g",  grade:"시약용",  hazards:[],                                    aliases:["글루코스","glucose","dextrose","C₆H₁₂O₆"],                casNo:"50-99-7" },
-  { name:"녹말(전분)",                 category:"기타",    unit:"g",  grade:"시약용",  hazards:[],                                    aliases:["전분","starch","녹말"],                                     casNo:"9005-25-8" },
-  { name:"구연산(C₆H₈O₇)",           category:"기타",    unit:"g",  grade:"시약용",  hazards:["irritant"],                          aliases:["시트르산","citric acid","C₆H₈O₇"],                         casNo:"77-92-9" },
-  { name:"마그네슘(Mg)",              category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable","irritant"],              aliases:["Mg","magnesium"],                                           casNo:"7439-95-4" },
-  { name:"아연(Zn)",                  category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable","environment","irritant"], aliases:["Zn","zinc"],                                               casNo:"7440-66-6" },
-  { name:"구리(Cu)",                  category:"기타",    unit:"g",  grade:"1급",     hazards:["environment","irritant"],            aliases:["Cu","copper"],                                              casNo:"7440-50-8" },
-  { name:"철(Fe)",                    category:"기타",    unit:"g",  grade:"1급",     hazards:["flammable"],                         aliases:["Fe","iron"],                                                casNo:"7439-89-6" },
-];
-
-// ─── Utility Functions ───
-const formatDate = (dateStr) => {
-  const d = new Date(dateStr);
-  return `${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-};
-const getStockStatus = (stock, minStock) => {
-  if (stock === 0) return { label: "재고없음", color: "#E53E3E", bg: "#FED7D7" };
-  const r = stock / minStock;
-  if (r <= 1) return { label: "", color: "#E53E3E", bg: "#FED7D7" };
-  if (r <= 2) return { label: "", color: "#DD6B20", bg: "#FEEBC8" };
-  return { label: "", color: "#38A169", bg: "#C6F6D5" };
+const SUBJECTS = ["전체", "화학", "생물", "물리"];
+const emptyChemical = { name: "", category: "", unit: "g", stock: "", minStock: "", location: "", hazards: "", msdsUrl: "", memo: "", supplier: "", aliases: "", casNo: "" };
+const emptyLog = { chemicalId: "", type: "out", amount: "", unit: "", user: "", purpose: "", note: "" };
+const emptyExperiment = { name: "", subject: "화학", grade: "1학년", description: "" };
+const emptyExpChemical = { chemicalName: "", amount: "", unit: "g", note: "" };
+const localDateKey = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
-// ─── 초성 검색 ───
-const CHOSUNG_LIST = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-const getChosung = (str) =>
-  str.split('').map(ch => {
-    const code = ch.charCodeAt(0) - 0xAC00;
-    if (code < 0 || code > 11171) return ch;
-    return CHOSUNG_LIST[Math.floor(code / 28 / 21)];
-  }).join('');
+function SetupScreen({ onConnected, onDemo }) {
+  const [url, setUrl] = useState(api.getGSheetsUrl());
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
-const matchSearch = (query, chem) => {
-  if (!query.trim()) return true;
-  const q = query.trim();
-  const ql = q.toLowerCase();
-  const isCs = /^[ㄱ-ㅎ]+$/.test(q);
-  const targets = [chem.name, chem.id, chem.category, ...(chem.aliases || [])].filter(Boolean);
-  if (isCs) return targets.some(t => getChosung(t).includes(q));
-  return targets.some(t => t.toLowerCase().includes(ql));
-};
+  const copyScript = async () => {
+    try {
+      const code = await fetch("/gsheets-backend.gs").then((r) => r.text());
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      window.open("/gsheets-backend.gs", "_blank");
+    }
+  };
 
-// 단위 선택 옵션: {label, factor} — factor는 base 단위로 변환 시 곱하는 값
-const getUnitOptions = (baseUnit) => {
-  if (baseUnit === "mL") return [{ label: "mL", factor: 1 }, { label: "L", factor: 1000 }];
-  if (baseUnit === "g")  return [{ label: "g", factor: 1 }, { label: "mg", factor: 0.001 }, { label: "kg", factor: 1000 }];
-  return [{ label: baseUnit || "단위", factor: 1 }];
-};
-
-// ─── Data Mappers: DB(snake_case) ↔ App(camelCase) ───
-const chemToApp = (r) => ({
-  id: r.id, name: r.name, category: r.category,
-  unit: r.unit, stock: Number(r.stock), minStock: Number(r.min_stock),
-  location: r.location, hazards: r.hazards || [], msdsUrl: r.msds_url,
-  memo: r.grade, supplier: r.supplier, lastUpdated: r.last_updated,
-  aliases: r.aliases || [], casNo: r.cas_no || "",
-});
-const chemToDb = (c) => ({
-  id: c.id, name: c.name, category: c.category,
-  unit: c.unit, stock: c.stock, min_stock: c.minStock,
-  location: c.location, hazards: c.hazards, msds_url: c.msdsUrl,
-  grade: c.memo, supplier: c.supplier, last_updated: c.lastUpdated,
-  aliases: c.aliases || [], cas_no: c.casNo || "",
-});
-const logToApp = (r) => ({
-  id: r.id, chemicalId: r.chemical_id, type: r.type,
-  amount: Number(r.amount), user: r.user_name,
-  purpose: r.purpose || "", note: r.note || "", date: r.date,
-});
-
-// ─── CSV / 엑셀 유틸리티 ───
-const csvCell = (val) => {
-  const s = String(val ?? "");
-  return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-const exportToCSV = (chemicals) => {
-  const header = ["코드", "약품명", "분류", "단위", "현재재고", "보관위치", "메모", "공급처", "위험성", "최종수정"];
-  const rows = chemicals.map((c) => [
-    c.id, c.name, c.category, c.unit,
-    c.stock, c.location, c.memo, c.supplier,
-    c.hazards.map((h) => GHS_PICTOGRAMS[h]?.label || h).join(", "),
-    c.lastUpdated,
-  ]);
-  const csv = "\uFEFF" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `약품재고_${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-};
-
-const parseCSVLine = (line) => {
-  const fields = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { inQuotes = !inQuotes; }
-    else if (ch === "," && !inQuotes) { fields.push(current.trim()); current = ""; }
-    else { current += ch; }
-  }
-  fields.push(current.trim());
-  return fields;
-};
-
-const parseCSV = (text) => {
-  const clean = text.startsWith("\uFEFF") ? text.slice(1) : text;
-  const lines = clean.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  return lines.slice(1).map((line) => parseCSVLine(line));
-};
-
-const downloadCSVTemplate = () => {
-  // 열 순서: 약품명,분류,단위,현재재고,보관위치,등급,공급처,위험성코드
-  const header = "약품명,분류,단위,현재재고,보관위치,등급,공급처,위험성코드";
-  const rows = [
-    `염산(HCl),산,mL,2500,A-1,특급,대정화금,"corrosive,toxic,irritant"`,
-    `수산화나트륨(NaOH),염기,g,1800,A-2,특급,대정화금,"corrosive,irritant"`,
-  ];
-  const csv = "\uFEFF" + [header, ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "약품목록_가져오기_템플릿.csv";
-  link.click();
-};
-
-// ─── Loading Screen ───
-function LoadingScreen() {
-  return (
-    <div style={{ maxWidth:500, margin:"0 auto", minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"#F7FAFC", fontFamily:"'Pretendard',sans-serif" }}>
-      <style>{`@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');`}</style>
-      <div style={{ textAlign:"center" }}>
-        <div style={{ fontSize:"48px", marginBottom:16 }}>🧪</div>
-        <div style={{ fontSize:"14px", color:"#718096" }}>로딩 중...</div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Login Screen (이메일/비밀번호) ───
-function LoginScreen({ schoolName }) {
-  const [mode, setMode] = useState("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [regSchoolName, setRegSchoolName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState({ text: "", ok: true });
-
-  const handleSubmit = async () => {
-    if (mode === "reset") {
-      if (!email.trim()) { setMsg({ text: "이메일을 입력해주세요.", ok: false }); return; }
-      setLoading(true); setMsg({ text: "", ok: true });
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
-      setLoading(false);
-      if (error) setMsg({ text: "오류가 발생했습니다. 이메일을 확인해주세요.", ok: false });
-      else setMsg({ text: "비밀번호 재설정 링크를 이메일로 발송했습니다.", ok: true });
+  const connect = async () => {
+    if (!url.trim()) {
+      setError("4단계에서 복사한 웹 앱 URL을 입력해주세요.");
       return;
     }
-    if (!email.trim() || !password.trim()) {
-      setMsg({ text: "이메일과 비밀번호를 입력해주세요.", ok: false }); return;
+    setTesting(true);
+    setError("");
+    const previous = api.getGSheetsUrl();
+    api.setGSheetsUrl(url);
+    try {
+      await api.fetchChemicals();
+      localStorage.removeItem("demoStarted");
+      onConnected();
+    } catch {
+      if (previous) api.setGSheetsUrl(previous);
+      else api.clearGSheetsUrl();
+      setError("연결에 실패했습니다. 아래 사항을 확인하세요: ① URL이 정확한지 ② Apps Script 배포 시 액세스 권한을 '모든 사용자'로 설정했는지");
+    } finally {
+      setTesting(false);
     }
-    setLoading(true); setMsg({ text: "", ok: true });
-    if (mode === "signin") {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setMsg({ text: "이메일 또는 비밀번호가 올바르지 않습니다.", ok: false });
-    } else {
-      if (!regSchoolName.trim()) { setMsg({ text: "학교명을 입력해주세요.", ok: false }); setLoading(false); return; }
-      if (password.length < 6) { setMsg({ text: "비밀번호는 6자 이상이어야 합니다.", ok: false }); setLoading(false); return; }
-      if (password !== passwordConfirm) { setMsg({ text: "비밀번호가 일치하지 않습니다.", ok: false }); setLoading(false); return; }
-      const { error } = await supabase.auth.signUp({
-        email, password,
-        options: { data: { school_name: regSchoolName.trim() } },
-      });
-      if (error) setMsg({ text: "가입 실패: " + error.message, ok: false });
-      else setMsg({ text: "확인 이메일을 발송했습니다. 받은 편함을 확인해주세요.", ok: true });
-    }
-    setLoading(false);
   };
 
   return (
-    <div style={{ maxWidth:500, margin:"0 auto", background:"#F7FAFC", minHeight:"100vh", fontFamily:"'Pretendard',sans-serif", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 24px" }}>
-      <style>{`@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');`}</style>
-      <div style={{ fontSize:"64px", marginBottom:16 }}>🧪</div>
-      <h1 style={{ fontSize:"24px", fontWeight:800, color:"#1A202C", margin:"0 0 6px", textAlign:"center" }}>시약장관리</h1>
-      <p style={{ fontSize:"13px", color:"#718096", margin:"0 0 32px", textAlign:"center" }}>{schoolName}</p>
-
-      {mode !== "reset" && (
-        <div style={{ display:"flex", background:"#EDF2F7", borderRadius:12, padding:4, marginBottom:24, width:"100%" }}>
-          {[["signin","로그인"],["signup","회원가입"]].map(([m, label]) => (
-            <button key={m} onClick={() => { setMode(m); setMsg({ text:"", ok:true }); }}
-              style={{ flex:1, padding:"9px", borderRadius:9, border:"none", fontSize:"14px", fontWeight:700, cursor:"pointer",
-                background: mode===m?"#fff":"transparent", color: mode===m?"#1A202C":"#718096",
-                boxShadow: mode===m?"0 1px 4px rgba(0,0,0,0.1)":"none", transition:"all 0.15s" }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {mode === "reset" && (
-        <div style={{ width:"100%", marginBottom:20, padding:"12px 14px", borderRadius:12, background:"#EBF8FF", border:"1px solid #BEE3F8", fontSize:"13px", color:"#2B6CB0", lineHeight:1.6 }}>
-          가입 시 사용한 이메일을 입력하면<br />비밀번호 재설정 링크를 보내드립니다.
-        </div>
-      )}
-
-      <div style={{ width:"100%", marginBottom:12 }}>
-        <label style={labelStyle}>이메일</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key==="Enter" && handleSubmit()}
-          placeholder="example@school.kr" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-      </div>
-
-      {mode === "signup" && (
-        <div style={{ width:"100%", marginBottom:12 }}>
-          <label style={labelStyle}>학교명 *</label>
-          <input type="text" value={regSchoolName} onChange={(e) => setRegSchoolName(e.target.value)}
-            placeholder="예: 오산고등학교(서울)" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-          <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:4 }}>
-            같은 이름의 학교 구분을 위해 <span style={{ color:"#4A5568", fontWeight:600 }}>학교명(지역)</span> 형식으로 입력해주세요.<br />
-            같은 학교명으로 가입한 계정끼리 데이터가 공유됩니다.
+    <main className="setup-shell">
+      <section className="setup-panel">
+        <div className="brand-mark">LAB</div>
+        <h1>시약장 관리 앱 연결하기</h1>
+        <p className="muted">선생님의 Google 계정에 데이터가 저장됩니다. 아래 4단계를 따라 하면 약 5분이면 완료됩니다.</p>
+        <div className="steps">
+          <div>
+            <strong>1</strong>
+            <span>
+              <a href="https://sheets.new" target="_blank" rel="noopener noreferrer">Google 스프레드시트 새 파일</a>을 만드세요.
+              <span className="step-hint">파일 이름은 자유롭게 정하셔도 됩니다. (예: 과학실 시약 관리)</span>
+            </span>
+          </div>
+          <div>
+            <strong>2</strong>
+            <span>
+              스프레드시트 상단 메뉴에서 <b>확장 프로그램 → Apps Script</b>를 클릭하세요.<br />
+              열린 편집 화면에서 기존 내용을 <b>전부 지운 뒤</b> 아래 버튼으로 코드를 복사해 붙여넣고 <b>저장(Ctrl+S)</b>하세요.
+              <br />
+              <button className="copy-btn" onClick={copyScript}>{copied ? "✅ 복사 완료!" : "📋 백엔드 코드 복사"}</button>
+            </span>
+          </div>
+          <div>
+            <strong>3</strong>
+            <span>
+              Apps Script 화면 오른쪽 위 <b>배포 → 새 배포</b>를 클릭하세요.<br />
+              <span className="step-table">
+                <span>유형</span><b>웹 앱</b>
+                <span>실행 사용자</span><b>나</b>
+                <span>액세스 권한</span><b>모든 사용자</b>
+              </span>
+              <b>배포</b> 버튼을 누르고, Google 계정 권한 허용 요청이 나오면 <b>허용</b>을 클릭하세요.
+              <span className="step-hint">⚠️ '안전하지 않은 앱' 경고가 나오면 '고급 → 이동(안전하지 않음)'을 클릭하세요.</span>
+            </span>
+          </div>
+          <div>
+            <strong>4</strong>
+            <span>
+              배포 완료 화면에 표시된 <b>웹 앱 URL</b>을 복사해서 아래에 붙여넣으세요.
+              <span className="step-hint">URL 형식 예시: https://script.google.com/macros/s/XXXXXXX/exec</span>
+            </span>
           </div>
         </div>
-      )}
-
-      {mode !== "reset" && (
-        <div style={{ width:"100%", marginBottom:mode==="signup"?12:mode==="signin"?8:20 }}>
-          <label style={labelStyle}>비밀번호</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key==="Enter" && handleSubmit()}
-            placeholder={mode==="signup" ? "6자 이상" : "비밀번호 입력"} style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-        </div>
-      )}
-
-      {mode === "signup" && (
-        <div style={{ width:"100%", marginBottom:20 }}>
-          <label style={labelStyle}>비밀번호 확인</label>
-          <input type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} onKeyDown={(e) => e.key==="Enter" && handleSubmit()}
-            placeholder="비밀번호 재입력" style={{ ...inputStyle, width:"100%", boxSizing:"border-box",
-              borderColor: passwordConfirm && password !== passwordConfirm ? "#E53E3E" : "" }} />
-          {passwordConfirm && password !== passwordConfirm && (
-            <div style={{ fontSize:"11px", color:"#E53E3E", marginTop:4 }}>비밀번호가 일치하지 않습니다.</div>
-          )}
-        </div>
-      )}
-
-      {mode === "signin" && (
-        <div style={{ width:"100%", marginBottom:20, textAlign:"right" }}>
-          <button onClick={() => { setMode("reset"); setMsg({ text:"", ok:true }); }}
-            style={{ background:"none", border:"none", fontSize:"12px", color:"#3182CE", cursor:"pointer", padding:0, fontWeight:500 }}>
-            비밀번호를 잊으셨나요?
-          </button>
-        </div>
-      )}
-
-      {msg.text && (
-        <div style={{ width:"100%", marginBottom:16, padding:"10px 14px", borderRadius:10, fontSize:"13px", fontWeight:500, lineHeight:1.5,
-          background: msg.ok?"#F0FFF4":"#FFF5F5", color: msg.ok?"#276749":"#C53030", border:`1px solid ${msg.ok?"#C6F6D5":"#FED7D7"}` }}>
-          {msg.text}
-        </div>
-      )}
-
-      <button onClick={handleSubmit} disabled={loading}
-        style={{ width:"100%", padding:"14px", background:"#3182CE", color:"#fff", border:"none", borderRadius:14, fontSize:"15px", fontWeight:700, cursor:"pointer", opacity:loading?0.7:1 }}>
-        {loading ? "처리 중..." : mode==="signin" ? "로그인" : mode==="signup" ? "회원가입" : "재설정 링크 발송"}
-      </button>
-
-      {mode === "reset" && (
-        <button onClick={() => { setMode("signin"); setMsg({ text:"", ok:true }); }}
-          style={{ background:"none", border:"none", fontSize:"13px", color:"#718096", cursor:"pointer", marginTop:16, padding:0 }}>
-          ← 로그인으로 돌아가기
-        </button>
-      )}
-
-      <p style={{ fontSize:"11px", color:"#A0AEC0", marginTop:24, textAlign:"center", lineHeight:1.7 }}>
-        학교 계정으로 로그인하면<br />모든 교사가 실시간으로 재고를 공유합니다.
-      </p>
-      <p style={{ fontSize:"11px", color:"#A0AEC0", marginTop:8, textAlign:"center" }}>
-        문의: <a href="mailto:osanchem@osan.hs.kr" style={{ color:"#3182CE", textDecoration:"none" }}>osanchem@osan.hs.kr</a>
-      </p>
-    </div>
-  );
-}
-
-// ─── Setup Wizard (초기 DB 구축) ───
-function SetupWizard({ onComplete, showToast, schoolId }) {
-  const [step, setStep] = useState("choose");
-  const [csvChemicals, setCsvChemicals] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  const handleSampleData = async () => {
-    setLoading(true);
-    try {
-      await supabase.from("chemicals").insert(SAMPLE_CHEMICALS.map((c) => ({ ...chemToDb(c), school_id: schoolId })));
-      await supabase.from("logs").insert(
-        SAMPLE_LOGS.map((l) => ({ chemical_id:l.chemicalId, type:l.type, amount:l.amount, user_name:l.user, purpose:l.purpose, note:l.note, date:l.date, school_id: schoolId }))
-      );
-      showToast("샘플 데이터가 등록되었습니다.");
-      onComplete();
-    } catch { showToast("오류가 발생했습니다.", "error"); }
-    finally { setLoading(false); }
-  };
-
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const rows = parseCSV(ev.target.result);
-      if (rows.length === 0) { showToast("CSV 파일이 비어 있습니다.", "error"); return; }
-      // 열 순서: 약품명,분류,단위,현재재고,보관위치,메모,공급처,위험성코드
-      const chemicals = rows
-        .map((row, i) => ({
-          id: `C${String(i + 1).padStart(3, "0")}`,
-          name: row[0] || "", category: row[1] || "",
-          unit: row[2] || "mL", stock: Number(row[3]) || 0,
-          minStock: 0, location: row[4] || "",
-          memo: row[5] || "", supplier: row[6] || "",
-          hazards: row[7] ? row[7].split(",").map((h) => h.trim()).filter((h) => GHS_PICTOGRAMS[h]) : [],
-          msdsUrl: "https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do",
-          lastUpdated: new Date().toISOString().slice(0, 10),
-        }))
-        .filter((c) => c.name);
-      if (chemicals.length === 0) { showToast("유효한 약품 데이터가 없습니다.", "error"); return; }
-      setCsvChemicals(chemicals);
-      setStep("csv-preview");
-    };
-    reader.readAsText(file, "UTF-8");
-  };
-
-  const handleCSVImport = async () => {
-    setLoading(true);
-    try {
-      await supabase.from("chemicals").insert(csvChemicals.map((c) => ({ ...chemToDb(c), school_id: schoolId })));
-      showToast(`${csvChemicals.length}개 약품이 등록되었습니다.`);
-      onComplete();
-    } catch { showToast("가져오기에 실패했습니다.", "error"); }
-    finally { setLoading(false); }
-  };
-
-  if (step === "csv-preview") {
-    return (
-      <div style={{ position:"fixed", inset:0, background:"#F7FAFC", zIndex:500, overflowY:"auto", fontFamily:"'Pretendard',sans-serif", padding:"20px 16px 40px" }}>
-        <style>{`@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');`}</style>
-        <button onClick={() => setStep("choose")} style={{ background:"none", border:"none", color:"#3182CE", fontSize:"14px", cursor:"pointer", padding:"0 0 16px" }}>← 뒤로</button>
-        <h2 style={{ fontSize:"18px", fontWeight:800, margin:"0 0 4px", color:"#1A202C" }}>CSV 미리보기</h2>
-        <p style={{ fontSize:"13px", color:"#718096", margin:"0 0 16px" }}>{csvChemicals.length}개 약품이 인식되었습니다.</p>
-        <div style={{ overflowX:"auto", marginBottom:20, borderRadius:12, border:"1px solid #E2E8F0" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"12px" }}>
-            <thead>
-              <tr style={{ background:"#EDF2F7" }}>
-                {["코드","약품명","분류","단위","재고","위치"].map((h) => (
-                  <th key={h} style={{ padding:"10px 8px", textAlign:"left", fontWeight:600, color:"#4A5568", whiteSpace:"nowrap" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {csvChemicals.slice(0, 20).map((c) => (
-                <tr key={c.id} style={{ borderTop:"1px solid #E2E8F0" }}>
-                  <td style={{ padding:"8px", fontFamily:"monospace", color:"#3182CE", fontSize:"11px" }}>{c.id}</td>
-                  <td style={{ padding:"8px", fontWeight:600 }}>{c.name}</td>
-                  <td style={{ padding:"8px", color:"#718096" }}>{c.category}</td>
-                  <td style={{ padding:"8px", color:"#718096" }}>{c.unit}</td>
-                  <td style={{ padding:"8px", fontFamily:"monospace" }}>{c.stock}</td>
-                  <td style={{ padding:"8px", color:"#718096" }}>{c.location}</td>
-                </tr>
-              ))}
-              {csvChemicals.length > 20 && (
-                <tr><td colSpan={6} style={{ padding:"10px", textAlign:"center", color:"#A0AEC0", fontSize:"11px" }}>... 외 {csvChemicals.length - 20}개</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <button onClick={handleCSVImport} disabled={loading}
-          style={{ width:"100%", padding:"14px", background:"#3182CE", color:"#fff", border:"none", borderRadius:14, fontSize:"15px", fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
-          {loading ? "등록 중..." : `${csvChemicals.length}개 약품 등록하기`}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"#F7FAFC", zIndex:500, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 24px", fontFamily:"'Pretendard',sans-serif" }}>
-      <style>{`@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');`}</style>
-      <div style={{ fontSize:"52px", marginBottom:16 }}>🗄️</div>
-      <h2 style={{ fontSize:"22px", fontWeight:800, color:"#1A202C", margin:"0 0 8px", textAlign:"center" }}>약품 목록 초기 설정</h2>
-      <p style={{ fontSize:"13px", color:"#718096", margin:"0 0 32px", textAlign:"center", lineHeight:1.7 }}>
-        데이터베이스가 비어 있습니다.<br />약품 목록을 어떻게 시작할까요?
-      </p>
-      <div style={{ width:"100%", maxWidth:360, display:"flex", flexDirection:"column", gap:12 }}>
-        <button onClick={handleSampleData} disabled={loading} style={{ ...setupOptionStyle, borderColor:"#3182CE" }}>
-          <div style={{ fontSize:"28px", marginBottom:6 }}>🧪</div>
-          <div style={{ fontWeight:700, fontSize:"15px", color:"#1A202C", marginBottom:4 }}>샘플 데이터로 시작</div>
-          <div style={{ fontSize:"12px", color:"#718096", lineHeight:1.5 }}>고등학교 실험실용 10가지 약품이<br />미리 등록됩니다.</div>
-        </button>
-        <label style={{ ...setupOptionStyle, borderColor:"#38A169", cursor:"pointer" }}>
-          <div style={{ fontSize:"28px", marginBottom:6 }}>📂</div>
-          <div style={{ fontWeight:700, fontSize:"15px", color:"#1A202C", marginBottom:4 }}>CSV 파일 가져오기</div>
-          <div style={{ fontSize:"12px", color:"#718096", lineHeight:1.5 }}>기존 엑셀/CSV 약품 목록을<br />불러옵니다.</div>
-          <input type="file" accept=".csv" onChange={handleFileSelect} style={{ display:"none" }} />
+        <label className="field">
+          <span>4단계에서 복사한 웹 앱 URL</span>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" />
         </label>
-        <button onClick={onComplete} style={{ ...setupOptionStyle, borderColor:"#A0AEC0" }}>
-          <div style={{ fontSize:"28px", marginBottom:6 }}>📋</div>
-          <div style={{ fontWeight:700, fontSize:"15px", color:"#1A202C", marginBottom:4 }}>빈 목록으로 시작</div>
-          <div style={{ fontSize:"12px", color:"#718096", lineHeight:1.5 }}>약품을 직접 하나씩 등록합니다.</div>
-        </button>
-      </div>
-      <button onClick={downloadCSVTemplate}
-        style={{ marginTop:20, background:"none", border:"none", color:"#3182CE", fontSize:"12px", cursor:"pointer", textDecoration:"underline" }}>
-        CSV 템플릿 다운로드
-      </button>
+        {error && <p className="error-text">{error}</p>}
+        <div className="button-row">
+          <button className="primary" onClick={connect} disabled={testing}>{testing ? "연결 확인 중..." : "연결"}</button>
+          <button className="ghost" onClick={onDemo}>데모로 먼저 둘러보기</button>
+        </div>
+        <p className="setup-footer">데이터는 선생님의 Google Drive에만 저장됩니다. 개발자는 접근할 수 없습니다.</p>
+      </section>
+    </main>
+  );
+}
+
+function Modal({ title, children, onClose }) {
+  return (
+    <div className="modal-backdrop">
+      <section className="modal">
+        <header className="modal-head">
+          <h2>{title}</h2>
+          <button className="icon-button" onClick={onClose} title="닫기">×</button>
+        </header>
+        {children}
+      </section>
     </div>
   );
 }
 
-// ─── QR Scanner ───
-function QRScanner({ chemicals, onScan, onClose }) {
-  const [cameraError, setCameraError] = useState(false);
-  const scanned = useRef(false);
-  const qrRef = useRef(null);
+function ChemicalForm({ initial = emptyChemical, onSave, onClose }) {
+  const [form, setForm] = useState({ ...emptyChemical, ...initial, hazards: toArray(initial.hazards).join(", "), aliases: toArray(initial.aliases).join(", ") });
+  const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const submit = () => {
+    if (!form.name.trim()) return;
+    onSave(normalizeChemical({ ...form, id: initial.id || makeId("C"), hazards: form.hazards, aliases: form.aliases, lastUpdated: today() }));
+  };
+  return (
+    <Modal title={initial.id ? "약품 수정" : "약품 추가"} onClose={onClose}>
+      <div className="form-grid">
+        <label><span>약품명</span><input value={form.name} onChange={(e) => set("name", e.target.value)} /></label>
+        <label><span>분류</span><input value={form.category} onChange={(e) => set("category", e.target.value)} /></label>
+        <label><span>단위{initial.id ? " (등록 후 변경 불가)" : ""}</span><select value={form.unit} disabled={Boolean(initial.id)} onChange={(e) => set("unit", e.target.value)}><option>g</option><option>mL</option><option>개</option></select></label>
+        <label><span>현재재고{initial.id ? " (입출고 기록으로 변경)" : ""}</span><input type="number" min="0" step="any" value={form.stock} readOnly={Boolean(initial.id)} onChange={(e) => set("stock", e.target.value)} /></label>
+        <label><span>최소재고</span><input type="number" value={form.minStock} onChange={(e) => set("minStock", e.target.value)} /></label>
+        <label><span>위치</span><input value={form.location} onChange={(e) => set("location", e.target.value)} /></label>
+        <label><span>공급처</span><input value={form.supplier} onChange={(e) => set("supplier", e.target.value)} /></label>
+        <label><span>CAS No.</span><input value={form.casNo} onChange={(e) => set("casNo", e.target.value)} /></label>
+        <label className="wide"><span>별칭</span><input value={form.aliases} onChange={(e) => set("aliases", e.target.value)} placeholder="쉼표로 구분" /></label>
+        <label className="wide"><span>메모</span><textarea value={form.memo} onChange={(e) => set("memo", e.target.value)} /></label>
+      </div>
+      <div className="button-row right"><button className="ghost" onClick={onClose}>취소</button><button className="primary" onClick={submit}>저장</button></div>
+    </Modal>
+  );
+}
+
+function LogForm({ chemicals, initial = emptyLog, onSave, onClose }) {
+  const [form, setForm] = useState(initial);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [requestId] = useState(() => makeId("L"));
+  const selected = chemicals.find((c) => c.id === form.chemicalId);
+  const unit = form.unit || selected?.unit || "g";
+  const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const submit = async () => {
+    if (!form.chemicalId || !selected) return setError("약품을 선택해주세요.");
+    if (!Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0) return setError("수량은 0보다 큰 숫자로 입력해주세요.");
+    if (!form.user.trim()) return setError("담당자를 입력해주세요.");
+    const baseAmount = convertToBase(form.amount, unit, selected.unit);
+    if (!Number.isFinite(baseAmount) || baseAmount <= 0) return setError("수량과 단위를 확인해주세요.");
+    if (form.type === "out" && baseAmount > selected.stock) return setError(`재고가 부족합니다. 현재 재고는 ${selected.stock}${selected.unit}입니다.`);
+    setSaving(true);
+    setError("");
+    try {
+      await onSave({ ...form, id: requestId, unit });
+    } catch (err) {
+      setError(err.message || "출납 기록을 저장하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal title="입출고 기록" onClose={onClose}>
+      <div className="form-grid">
+        <label className="wide"><span>약품</span><select value={form.chemicalId} onChange={(e) => { const chemical = chemicals.find((c) => c.id === e.target.value); setForm((prev) => ({ ...prev, chemicalId: e.target.value, unit: chemical?.unit || "" })); }}><option value="">선택</option>{chemicals.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.stock}{c.unit})</option>)}</select></label>
+        <label><span>유형</span><select value={form.type} onChange={(e) => set("type", e.target.value)}><option value="out">출고</option><option value="in">입고</option></select></label>
+        <label><span>수량</span><input type="number" min="0" step="any" value={form.amount} onChange={(e) => set("amount", e.target.value)} /></label>
+        <label><span>단위</span><select value={unit} onChange={(e) => set("unit", e.target.value)}>{getUnitOptions(selected?.unit).map((option) => <option key={option}>{option}</option>)}</select></label>
+        <label><span>담당자</span><input value={form.user} onChange={(e) => set("user", e.target.value)} /></label>
+        <label className="wide"><span>용도</span><input value={form.purpose} onChange={(e) => set("purpose", e.target.value)} /></label>
+        <label className="wide"><span>비고</span><textarea value={form.note} onChange={(e) => set("note", e.target.value)} /></label>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+      <div className="button-row right"><button className="ghost" onClick={onClose} disabled={saving}>취소</button><button className="primary" onClick={submit} disabled={saving}>{saving ? "저장 중..." : "기록"}</button></div>
+    </Modal>
+  );
+}
+
+function QRScannerView({ chemicals, onFound, notify }) {
+  useEffect(() => {
+    const scanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: { width: 240, height: 240 } }, false);
+    scanner.render((decodedText) => {
+      const found = chemicals.find((chemical) => chemical.id === decodedText.trim());
+      if (found) onFound(found);
+      else notify("등록되지 않은 약품입니다.");
+      scanner.clear().catch(() => {});
+    }, () => {});
+    return () => { scanner.clear().catch(() => {}); };
+  }, [chemicals, notify, onFound]);
+
+  return <div id="qr-reader" className="qr-reader" />;
+}
+
+function ExperimentsView({ chemicals, logs, experiments, expChemicals, onAddExperiment, onDeleteExperiment, onAddExpChemical, onDeleteExpChemical, onImportPresets, onPrepared }) {
+  const [query, setQuery] = useState("");
+  const [subject, setSubject] = useState("전체");
+  const [selectedId, setSelectedId] = useState(experiments[0]?.id || "");
+  const [checked, setChecked] = useState({});
+  const [preparing, setPreparing] = useState(false);
+  const [prepareRequestId, setPrepareRequestId] = useState(() => makeId("B"));
+  const [showExperimentForm, setShowExperimentForm] = useState(false);
+  const [showChemicalForm, setShowChemicalForm] = useState(false);
+  const [expForm, setExpForm] = useState(emptyExperiment);
+  const [chemForm, setChemForm] = useState(emptyExpChemical);
 
   useEffect(() => {
-    const qr = new Html5Qrcode("qr-reader-div", { verbose: false });
-    qrRef.current = qr;
-    qr.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 230, height: 230 } },
-      (text) => { if (scanned.current) return; scanned.current = true; onScan(text); },
-      () => {}
-    ).catch(() => setCameraError(true));
-    return () => { qr.stop().catch(() => {}); };
-  }, []);
+    if (!selectedId && experiments[0]) setSelectedId(experiments[0].id);
+    if (selectedId && !experiments.some((e) => e.id === selectedId)) setSelectedId(experiments[0]?.id || "");
+  }, [experiments, selectedId]);
 
-  return (
-    <div style={{ position:"fixed", inset:0, background:"#111", zIndex:1000, display:"flex", flexDirection:"column", fontFamily:"'Pretendard',sans-serif" }}>
-      <style>{`
-        #qr-reader-div video { width:100% !important; height:100% !important; object-fit:cover !important; }
-        #qr-reader-div img   { display:none !important; }
-        @keyframes scanAnim  { 0%,100% { top:8%; } 50% { top:84%; } }
-      `}</style>
-      <div style={{ padding:"16px", display:"flex", justifyContent:"space-between", alignItems:"center", background:"rgba(0,0,0,0.5)", position:"relative", zIndex:10 }}>
-        <button onClick={onClose} style={{ background:"none", border:"none", color:"#fff", fontSize:"16px", cursor:"pointer" }}>✕ 닫기</button>
-        <span style={{ color:"#fff", fontWeight:700, fontSize:"15px" }}>QR / 바코드 스캔</span>
-        <div style={{ width:60 }} />
-      </div>
-      <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
-        <div id="qr-reader-div" style={{ position:"absolute", inset:0, display: cameraError ? "none" : "block" }} />
-        {cameraError ? (
-          <div style={{ height:"100%", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:"#fff", padding:24 }}>
-            <div style={{ fontSize:"48px", marginBottom:16 }}>📵</div>
-            <div style={{ fontSize:"15px", fontWeight:700, marginBottom:8 }}>카메라 접근이 거부되었습니다</div>
-            <div style={{ fontSize:"12px", color:"rgba(255,255,255,0.6)", marginBottom:32, textAlign:"center" }}>
-              브라우저 주소창 옆 🔒 아이콘을 눌러<br />카메라 권한을 허용해주세요
-            </div>
-            <div style={{ fontSize:"12px", color:"rgba(255,255,255,0.4)", marginBottom:12 }}>── 데모 스캔 ──</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, width:"100%", maxWidth:280 }}>
-              {chemicals.slice(0, 4).map((c) => (
-                <button key={c.id} onClick={() => onScan(c.id)}
-                  style={{ padding:"10px 8px", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:10, color:"#fff", fontSize:"12px", cursor:"pointer" }}>
-                  {c.name.split("(")[0]}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-            <div style={{ width:240, height:240, position:"relative", boxShadow:"0 0 0 9999px rgba(0,0,0,0.55)", borderRadius:4 }}>
-              {[
-                { top:-2,    left:-2,  borderTop:"4px solid #48BB78", borderLeft:"4px solid #48BB78",  borderRadius:"12px 0 0 0" },
-                { top:-2,    right:-2, borderTop:"4px solid #48BB78", borderRight:"4px solid #48BB78", borderRadius:"0 12px 0 0" },
-                { bottom:-2, left:-2,  borderBottom:"4px solid #48BB78", borderLeft:"4px solid #48BB78",  borderRadius:"0 0 0 12px" },
-                { bottom:-2, right:-2, borderBottom:"4px solid #48BB78", borderRight:"4px solid #48BB78", borderRadius:"0 0 12px 0" },
-              ].map((s, i) => <div key={i} style={{ position:"absolute", width:32, height:32, ...s }} />)}
-              <div style={{ position:"absolute", left:0, right:0, height:2, background:"linear-gradient(to right, transparent, #48BB78, transparent)", animation:"scanAnim 2s ease-in-out infinite", boxShadow:"0 0 6px #48BB78" }} />
-            </div>
-            <p style={{ color:"rgba(255,255,255,0.85)", fontSize:"13px", marginTop:28 }}>QR코드를 화면 중앙에 맞춰주세요</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── QR 코드 생성 모달 ───
-function QRCodeModal({ chem, onClose }) {
-  const handleDownload = () => {
-    const svgEl = document.getElementById("chem-qr-svg");
-    if (!svgEl) return;
-    const svgData = new XMLSerializer().serializeToString(svgEl);
-    const canvas = document.createElement("canvas");
-    canvas.width = 300; canvas.height = 340;
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-    img.onload = () => {
-      ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 300, 340);
-      ctx.drawImage(img, 25, 20, 250, 250);
-      ctx.fillStyle = "#1A202C"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText(chem.name, 150, 295);
-      ctx.fillStyle = "#3182CE"; ctx.font = "bold 14px monospace";
-      ctx.fillText(chem.id, 150, 318);
-      ctx.fillStyle = "#718096"; ctx.font = "12px sans-serif";
-      ctx.fillText(`위치: ${chem.location}`, 150, 336);
-      const link = document.createElement("a");
-      link.download = `QR_${chem.id}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    };
-    img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
-  };
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 20px" }}>
-      <div style={{ background:"#fff", borderRadius:20, padding:24, width:"100%", maxWidth:320, textAlign:"center" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-          <span style={{ fontWeight:700, fontSize:"16px" }}>📱 QR 코드</span>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"20px", cursor:"pointer", color:"#718096" }}>✕</button>
-        </div>
-        <div style={{ display:"inline-block", padding:16, borderRadius:12, border:"2px solid #E2E8F0", marginBottom:16 }}>
-          <QRCodeSVG id="chem-qr-svg" value={chem.id} size={190} level="M" includeMargin={false} />
-        </div>
-        <div style={{ fontSize:"16px", fontWeight:700, color:"#1A202C", marginBottom:4 }}>{chem.name}</div>
-        <div style={{ fontSize:"14px", fontFamily:"monospace", color:"#3182CE", fontWeight:700, marginBottom:4 }}>{chem.id}</div>
-        <div style={{ fontSize:"12px", color:"#718096", marginBottom:20 }}>위치: {chem.location}</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-          <button onClick={handleDownload} style={{ ...btnStyle, background:"#3182CE", color:"#fff" }}>⬇️ PNG 저장</button>
-          <button onClick={onClose} style={{ ...btnStyle, background:"#EDF2F7", color:"#4A5568" }}>닫기</button>
-        </div>
-        <p style={{ fontSize:"11px", color:"#A0AEC0", marginTop:14, lineHeight:1.6 }}>
-          이 QR코드를 인쇄해서 약품 용기에<br />부착하면 스캔으로 바로 조회됩니다.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ─── 새 약품 등록 모달 ───
-function AddChemicalModal({ chemicals, onClose, onAdd, onSelectExisting, showToast }) {
-  const nextId = () => {
-    const nums = chemicals.map((c) => parseInt(c.id.replace("C", ""))).filter((n) => !isNaN(n));
-    return `C${String((nums.length > 0 ? Math.max(...nums) : 0) + 1).padStart(3, "0")}`;
-  };
-  const [form, setForm] = useState({
-    name:"", category:"", unit:"mL",
-    stock:"", minStock:"", location:"",
-    memo:"", supplier:"", hazards:[], aliases:[], casNo:"",
-    msdsUrl:"https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do",
+  const filtered = experiments.filter((exp) => {
+    const matchesSubject = subject === "전체" || exp.subject === subject;
+    const text = `${exp.name} ${exp.description} ${exp.subject} ${exp.grade}`.toLowerCase();
+    return matchesSubject && text.includes(query.toLowerCase());
   });
-  const [aliasInput, setAliasInput] = useState("");
-  // suggestions: { existing: [...], presets: [...] }
-  const [suggestions, setSuggestions] = useState({ existing: [], presets: [] });
-  const [autoFilled, setAutoFilled] = useState(false);
-  const [dupWarning, setDupWarning] = useState(null); // 정확히 일치하는 기존 약품
+  const selected = experiments.find((e) => e.id === selectedId) || filtered[0];
+  const materials = expChemicals.filter((item) => item.experimentId === selected?.id);
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const toggleHazard = (h) => setForm((f) => ({ ...f, hazards: f.hazards.includes(h) ? f.hazards.filter((x) => x !== h) : [...f.hazards, h] }));
-  const hasAnySuggestion = suggestions.existing.length > 0 || suggestions.presets.length > 0;
-
-  const handleNameChange = (val) => {
-    set("name", val);
-    setAutoFilled(false);
-    setDupWarning(null);
-    if (val.trim().length >= 1) {
-      const q = val.toLowerCase();
-      // 기등록 약품 중 일치하는 것
-      const existing = chemicals
-        .filter((c) => c.name.toLowerCase().includes(q))
-        .slice(0, 3);
-      // 프리셋 중 일치하는 것 (기등록과 이름이 완전히 같은 것은 제외)
-      const existingNames = new Set(existing.map((c) => c.name.toLowerCase()));
-      const presets = CHEMICAL_PRESETS
-        .filter((p) => p.name.toLowerCase().includes(q) && !existingNames.has(p.name.toLowerCase()))
-        .slice(0, 5);
-      setSuggestions({ existing, presets });
-    } else {
-      setSuggestions({ existing: [], presets: [] });
-    }
-  };
-
-  const applyPreset = (preset) => {
-    setForm((f) => ({
-      ...f,
-      name: preset.name, category: preset.category,
-      unit: preset.unit, hazards: preset.hazards,
-      aliases: preset.aliases || [], casNo: preset.casNo || "",
-    }));
-    setAliasInput((preset.aliases || []).join(", "));
-    setSuggestions({ existing: [], presets: [] });
-    setAutoFilled(true);
-    setDupWarning(null);
-  };
-
-  const closeSuggestions = () => {
-    setTimeout(() => setSuggestions({ existing: [], presets: [] }), 150);
-  };
-
-  const handleSubmit = () => {
-    if (!form.name.trim() || !form.category.trim() || !form.unit.trim()) {
-      showToast("약품명, 분류, 단위는 필수입니다.", "error"); return;
-    }
-    // 정확히 같은 이름의 약품이 이미 있으면 경고
-    const exact = chemicals.find((c) => c.name.toLowerCase() === form.name.trim().toLowerCase());
-    if (exact) {
-      setDupWarning(exact);
-      return;
-    }
-    const aliases = aliasInput.split(",").map(s => s.trim()).filter(Boolean);
-    onAdd({ ...form, aliases, id: nextId(), stock: Number(form.stock)||0, minStock: Number(form.minStock)||0, lastUpdated: new Date().toISOString().slice(0,10) });
-  };
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:500, padding:"20px", maxHeight:"90vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-          <h3 style={{ margin:0, fontSize:"16px", fontWeight:700 }}>➕ 새 약품 등록</h3>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"20px", cursor:"pointer", color:"#718096" }}>✕</button>
-        </div>
-        {/* 중복 경고 배너 */}
-        {dupWarning && (
-          <div style={{ background:"#FFFBEB", border:"1.5px solid #F6AD55", borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
-            <div style={{ fontSize:"13px", fontWeight:700, color:"#744210", marginBottom:8 }}>
-              ⚠️ 이미 등록된 약품입니다
-            </div>
-            <div style={{ fontSize:"12px", color:"#744210", marginBottom:10 }}>
-              <strong>{dupWarning.name}</strong> — 현재 재고 {dupWarning.stock}{dupWarning.unit} · 위치 {dupWarning.location || "미지정"}
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-              <button onMouseDown={() => onSelectExisting(dupWarning, "in")}
-                style={{ padding:"8px", background:"#38A169", color:"#fff", border:"none", borderRadius:9, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
-                📥 입고 처리하기
-              </button>
-              <button onMouseDown={() => onSelectExisting(dupWarning, "out")}
-                style={{ padding:"8px", background:"#E53E3E", color:"#fff", border:"none", borderRadius:9, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
-                📤 출고 처리하기
-              </button>
-            </div>
-            <button onClick={() => setDupWarning(null)}
-              style={{ width:"100%", marginTop:8, padding:"6px", background:"none", border:"1px solid #F6AD55", borderRadius:9, fontSize:"12px", color:"#744210", cursor:"pointer" }}>
-              무시하고 새 항목으로 등록
-            </button>
-          </div>
-        )}
-
-        {/* 약품명 + 자동완성 드롭다운 */}
-        <div style={{ marginBottom:10, position:"relative" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-            <label style={labelStyle}>약품명 *</label>
-            {autoFilled && (
-              <span style={{ fontSize:"11px", fontWeight:600, color:"#38A169", background:"#F0FFF4", padding:"2px 8px", borderRadius:10 }}>
-                ✓ GHS 자동입력됨
-              </span>
-            )}
-          </div>
-          <input
-            value={form.name}
-            onChange={(e) => handleNameChange(e.target.value)}
-            onBlur={closeSuggestions}
-            placeholder="약품명 입력 시 자동완성..."
-            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }}
-          />
-          {hasAnySuggestion && (
-            <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid #CBD5E0", borderRadius:10, boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:10, overflow:"hidden" }}>
-
-              {/* 기등록 약품 섹션 */}
-              {suggestions.existing.length > 0 && (
-                <>
-                  <div style={{ padding:"6px 12px", fontSize:"11px", fontWeight:700, color:"#744210", background:"#FFFBEB", borderBottom:"1px solid #F6E05E" }}>
-                    ⚠️ 이미 등록된 약품
-                  </div>
-                  {suggestions.existing.map((c) => (
-                    <div key={c.id} style={{ padding:"9px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:"1px solid #EDF2F7", background:"#FFFFF0" }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:"13px", fontWeight:600, color:"#1A202C" }}>{c.name}</div>
-                        <div style={{ fontSize:"11px", color:"#718096" }}>재고 {c.stock}{c.unit} · {c.location || "위치 미지정"}</div>
-                      </div>
-                      <div style={{ display:"flex", gap:5, flexShrink:0, marginLeft:8 }}>
-                        <button onMouseDown={() => onSelectExisting(c, "in")}
-                          style={{ padding:"4px 8px", background:"#38A169", color:"#fff", border:"none", borderRadius:7, fontSize:"11px", fontWeight:700, cursor:"pointer" }}>입고</button>
-                        <button onMouseDown={() => onSelectExisting(c, "out")}
-                          style={{ padding:"4px 8px", background:"#E53E3E", color:"#fff", border:"none", borderRadius:7, fontSize:"11px", fontWeight:700, cursor:"pointer" }}>출고</button>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {/* 프리셋 자동완성 섹션 */}
-              {suggestions.presets.length > 0 && (
-                <>
-                  {suggestions.existing.length > 0 && (
-                    <div style={{ padding:"6px 12px", fontSize:"11px", fontWeight:700, color:"#2B6CB0", background:"#EBF8FF", borderBottom:"1px solid #BEE3F8" }}>
-                      신규 등록 자동완성
-                    </div>
-                  )}
-                  {suggestions.presets.map((p) => (
-                    <button key={p.name} onMouseDown={() => applyPreset(p)}
-                      style={{ width:"100%", padding:"10px 12px", background:"none", border:"none", cursor:"pointer", textAlign:"left", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:"1px solid #EDF2F7" }}>
-                      <div>
-                        <div style={{ fontSize:"13px", fontWeight:600, color:"#1A202C" }}>{p.name}</div>
-                        <div style={{ fontSize:"11px", color:"#718096", marginTop:1 }}>{p.category} · {p.unit}</div>
-                      </div>
-                      <div style={{ display:"flex", gap:2, flexShrink:0, marginLeft:8 }}>
-                        {p.hazards.slice(0, 4).map((h) => (
-                          <span key={h} style={{ fontSize:"13px" }} title={GHS_PICTOGRAMS[h]?.label}>{GHS_PICTOGRAMS[h]?.icon}</span>
-                        ))}
-                        {p.hazards.length > 4 && <span style={{ fontSize:"10px", color:"#A0AEC0" }}>+{p.hazards.length-4}</span>}
-                      </div>
-                    </button>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 농도·형태 네이밍 가이드 */}
-        <div style={{ background:"#F7FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:"10px 12px", marginBottom:12, fontSize:"11px", color:"#4A5568", lineHeight:1.8 }}>
-          <div style={{ fontWeight:700, color:"#2D3748", marginBottom:4 }}>💡 농도·형태가 다를 경우 약품명에 구분해서 입력하세요</div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"2px 12px" }}>
-            <span><span style={{ color:"#3182CE", fontWeight:600 }}>염산(conc.)</span> 진한 염산</span>
-            <span><span style={{ color:"#3182CE", fontWeight:600 }}>염산 1M</span> 묽은 염산</span>
-            <span><span style={{ color:"#3182CE", fontWeight:600 }}>페놀프탈레인</span> 고체 시약</span>
-            <span><span style={{ color:"#3182CE", fontWeight:600 }}>페놀프탈레인 용액</span> 조제 용액</span>
-            <span><span style={{ color:"#3182CE", fontWeight:600 }}>에탄올 95%</span> 원액</span>
-            <span><span style={{ color:"#3182CE", fontWeight:600 }}>에탄올 70%</span> 희석액</span>
-          </div>
-        </div>
-
-        {/* 분류 (칩 + 직접입력) */}
-        <div style={{ marginBottom:10 }}>
-          <label style={labelStyle}>분류 *</label>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
-            {["산","염기","무기","유기","지시약"].map((cat) => (
-              <button key={cat} type="button" onClick={() => set("category", cat)}
-                style={{ padding:"5px 14px", borderRadius:20, border:"1.5px solid", cursor:"pointer", fontSize:"12px", fontWeight:600,
-                  borderColor: form.category === cat ? "#3182CE" : "#E2E8F0",
-                  background:  form.category === cat ? "#EBF8FF" : "#fff",
-                  color:       form.category === cat ? "#2B6CB0" : "#4A5568",
-                }}>
-                {cat}
-              </button>
-            ))}
-          </div>
-          <input value={form.category} onChange={(e) => set("category", e.target.value)}
-            placeholder="직접 입력 (예: 금속염)"
-            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-        </div>
-
-        {/* 나머지 필드 */}
-        {[
-          { label:"공급처",    key:"supplier", placeholder:"예: 대정화금" },
-          { label:"보관위치",  key:"location", placeholder:"예: E-1" },
-          { label:"메모",      key:"memo",     placeholder:"예: 특급, 30% 등 기타 메모" },
-        ].map(({ label, key, placeholder }) => (
-          <div key={key} style={{ marginBottom:10 }}>
-            <label style={labelStyle}>{label}</label>
-            <input value={form[key]} onChange={(e) => set(key, e.target.value)} placeholder={placeholder}
-              style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-          </div>
-        ))}
-
-        {/* 별칭 (검색어) 입력 */}
-        <div style={{ marginBottom:10 }}>
-          <label style={labelStyle}>별칭 / 다른 이름</label>
-          <input
-            value={aliasInput}
-            onChange={(e) => setAliasInput(e.target.value)}
-            placeholder="예: 에틸알코올, 주정, ethanol (쉼표로 구분)"
-            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }}
-          />
-          <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:4 }}>
-            관용명·영문명·화학식을 입력하면 검색 시 모두 찾을 수 있습니다.
-          </div>
-        </div>
-
-        {/* CAS No */}
-        <div style={{ marginBottom:10 }}>
-          <label style={labelStyle}>CAS No. <span style={{ fontWeight:400, color:"#A0AEC0" }}>(선택)</span></label>
-          <input value={form.casNo} onChange={(e) => set("casNo", e.target.value)}
-            placeholder="예: 7647-01-0"
-            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
-          <div>
-            <label style={labelStyle}>단위 *</label>
-            <select value={form.unit} onChange={(e) => set("unit", e.target.value)}
-              style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }}>
-              {["mL","L","g","kg","개"].map((u) => <option key={u}>{u}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>현재 재고</label>
-            <input type="number" value={form.stock} onChange={(e) => set("stock", e.target.value)}
-              placeholder="0" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-          </div>
-          <div>
-            <label style={labelStyle}>최소 재고</label>
-            <input type="number" value={form.minStock} onChange={(e) => set("minStock", e.target.value)}
-              placeholder="0" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-          </div>
-        </div>
-        <div style={{ marginBottom:16 }}>
-          <label style={labelStyle}>GHS 위험성</label>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {Object.entries(GHS_PICTOGRAMS).map(([key, val]) => (
-              <button key={key} onClick={() => toggleHazard(key)}
-                style={{ padding:"5px 10px", borderRadius:20, border:"1.5px solid", cursor:"pointer", fontSize:"12px", fontWeight:600,
-                  borderColor: form.hazards.includes(key) ? val.color : "#E2E8F0",
-                  background:  form.hazards.includes(key) ? val.color+"22" : "#fff",
-                  color:       form.hazards.includes(key) ? val.color : "#718096" }}>
-                {val.icon} {val.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button onClick={handleSubmit}
-          style={{ ...btnStyle, width:"100%", background:"#3182CE", color:"#fff", fontSize:"15px", padding:"14px" }}>
-          등록하기
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Edit Chemical Modal ───
-function EditChemicalModal({ chem, onClose, onUpdate, showToast }) {
-  const [form, setForm] = useState({
-    name: chem.name, category: chem.category, unit: chem.unit,
-    stock: String(chem.stock), minStock: String(chem.minStock),
-    location: chem.location || "", memo: chem.memo || "",
-    supplier: chem.supplier || "", hazards: chem.hazards || [],
-    aliases: chem.aliases || [], casNo: chem.casNo || "",
-    msdsUrl: chem.msdsUrl || "",
+  const rows = materials.map((item) => {
+    const chemical = findChemicalByName(chemicals, item.chemicalName);
+    const needed = chemical ? convertToBase(item.amount, item.unit, chemical.unit) : Number(item.amount || 0);
+    const available = chemical ? Number(chemical.stock || 0) : 0;
+    return { ...item, key: `${item.experimentId}||${item.chemicalName}`, chemical, needed, available, ok: Boolean(chemical) && needed <= available };
   });
-  const [aliasInput, setAliasInput] = useState((chem.aliases || []).join(", "));
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const toggleHazard = (h) => setForm((f) => ({
-    ...f,
-    hazards: f.hazards.includes(h) ? f.hazards.filter((x) => x !== h) : [...f.hazards, h],
-  }));
-
-  const handleSubmit = () => {
-    if (!form.name.trim() || !form.category.trim() || !form.unit.trim()) {
-      showToast("약품명, 분류, 단위는 필수입니다.", "error"); return;
-    }
-    const aliases = aliasInput.split(",").map((s) => s.trim()).filter(Boolean);
-    onUpdate({
-      ...chem,
-      ...form,
-      aliases,
-      stock: Number(form.stock) || 0,
-      minStock: Number(form.minStock) || 0,
-      lastUpdated: new Date().toISOString().slice(0, 10),
+  const allChecked = rows.length > 0 && rows.every((r) => checked[r.key]);
+  const toggleAll = () => {
+    setChecked((prev) => {
+      const next = { ...prev };
+      rows.forEach((row) => { next[row.key] = !allChecked; });
+      return next;
     });
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:500, padding:"20px", maxHeight:"90vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-          <h3 style={{ margin:0, fontSize:"16px", fontWeight:700 }}>✏️ 약품 정보 수정</h3>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"20px", cursor:"pointer", color:"#718096" }}>✕</button>
+    <div className="content two-column">
+      <section className="pane">
+        <div className="toolbar">
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="실험명 검색" />
+          <button className="primary small" onClick={() => setShowExperimentForm(true)}>실험 추가</button>
         </div>
-
-        {/* 약품명 */}
-        <div style={{ marginBottom:10 }}>
-          <label style={labelStyle}>약품명 *</label>
-          <input value={form.name} onChange={(e) => set("name", e.target.value)}
-            placeholder="약품명" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
+        <div className="chips">{SUBJECTS.map((s) => <button key={s} className={subject === s ? "chip active" : "chip"} onClick={() => setSubject(s)}>{s}</button>)}</div>
+        <div className="list">
+          {filtered.map((exp) => (
+            <button key={exp.id} className={selected?.id === exp.id ? "list-item selected" : "list-item"} onClick={() => setSelectedId(exp.id)}>
+              <strong>{exp.name}</strong><span>{exp.subject} · {exp.grade}</span>
+            </button>
+          ))}
+          {filtered.length === 0 && <div className="empty">검색 결과가 없습니다.</div>}
         </div>
+        <button className="ghost full" onClick={onImportPresets}>기본 실험 데이터 불러오기</button>
+      </section>
 
-        {/* 분류 칩 + 직접입력 */}
-        <div style={{ marginBottom:10 }}>
-          <label style={labelStyle}>분류 *</label>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
-            {["산","염기","무기","유기","지시약"].map((cat) => (
-              <button key={cat} type="button" onClick={() => set("category", cat)}
-                style={{ padding:"5px 14px", borderRadius:20, border:"1.5px solid", cursor:"pointer", fontSize:"12px", fontWeight:600,
-                  borderColor: form.category === cat ? "#3182CE" : "#E2E8F0",
-                  background:  form.category === cat ? "#EBF8FF" : "#fff",
-                  color:       form.category === cat ? "#2B6CB0" : "#4A5568",
-                }}>
-                {cat}
-              </button>
-            ))}
-          </div>
-          <input value={form.category} onChange={(e) => set("category", e.target.value)}
-            placeholder="직접 입력 (예: 금속염)"
-            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-        </div>
-
-        {/* 기타 텍스트 필드 */}
-        {[
-          { label:"공급처",   key:"supplier", placeholder:"예: 대정화금" },
-          { label:"보관위치", key:"location", placeholder:"예: E-1" },
-          { label:"메모",     key:"memo",     placeholder:"예: 특급, 30% 등 기타 메모" },
-        ].map(({ label, key, placeholder }) => (
-          <div key={key} style={{ marginBottom:10 }}>
-            <label style={labelStyle}>{label}</label>
-            <input value={form[key]} onChange={(e) => set(key, e.target.value)} placeholder={placeholder}
-              style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-          </div>
-        ))}
-
-        {/* 별칭 */}
-        <div style={{ marginBottom:10 }}>
-          <label style={labelStyle}>별칭 / 다른 이름</label>
-          <input value={aliasInput} onChange={(e) => setAliasInput(e.target.value)}
-            placeholder="예: 에틸알코올, 주정, ethanol (쉼표로 구분)"
-            style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-        </div>
-
-        {/* CAS No */}
-        <div style={{ marginBottom:10 }}>
-          <label style={labelStyle}>CAS No. <span style={{ fontWeight:400, color:"#A0AEC0" }}>(선택)</span></label>
-          <input value={form.casNo} onChange={(e) => set("casNo", e.target.value)}
-            placeholder="예: 7647-01-0" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-        </div>
-
-        {/* 단위 / 재고 / 최소재고 */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
-          <div>
-            <label style={labelStyle}>단위 *</label>
-            <select value={form.unit} onChange={(e) => set("unit", e.target.value)}
-              style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }}>
-              {["mL","L","g","kg","개"].map((u) => <option key={u}>{u}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>현재 재고</label>
-            <input type="number" value={form.stock} onChange={(e) => set("stock", e.target.value)}
-              placeholder="0" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-          </div>
-          <div>
-            <label style={labelStyle}>최소 재고</label>
-            <input type="number" value={form.minStock} onChange={(e) => set("minStock", e.target.value)}
-              placeholder="0" style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-          </div>
-        </div>
-
-        {/* GHS 위험성 */}
-        <div style={{ marginBottom:16 }}>
-          <label style={labelStyle}>GHS 위험성</label>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {Object.entries(GHS_PICTOGRAMS).map(([key, val]) => (
-              <button key={key} onClick={() => toggleHazard(key)}
-                style={{ padding:"5px 10px", borderRadius:20, border:"1.5px solid", cursor:"pointer", fontSize:"12px", fontWeight:600,
-                  borderColor: form.hazards.includes(key) ? val.color : "#E2E8F0",
-                  background:  form.hazards.includes(key) ? val.color+"22" : "#fff",
-                  color:       form.hazards.includes(key) ? val.color : "#718096" }}>
-                {val.icon} {val.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button onClick={handleSubmit}
-          style={{ ...btnStyle, width:"100%", background:"#3182CE", color:"#fff", fontSize:"15px", padding:"14px" }}>
-          수정 저장
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Edit Log Modal ───
-function EditLogModal({ log, chem, onClose, onSave, onDelete }) {
-  const unitOpts = getUnitOptions(chem?.unit || "");
-  const [editData, setEditData] = useState({ type: log.type, amount: String(log.amount), user: log.user, purpose: log.purpose, note: log.note });
-  const [editUnit, setEditUnit] = useState(chem?.unit || "");
-  const [saving, setSaving] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const handleSave = async () => {
-    if (!editData.amount || !editData.user) return;
-    setSaving(true);
-    const convFactor = unitOpts.find((o) => o.label === editUnit)?.factor ?? 1;
-    const finalAmount = Number(editData.amount) * convFactor;
-    await onSave({ ...editData, amount: finalAmount });
-    setSaving(false);
-  };
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:1100, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:500, padding:"20px", maxHeight:"85vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-          <h3 style={{ margin:0, fontSize:"16px", fontWeight:700 }}>✏️ 이력 수정</h3>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"20px", cursor:"pointer", color:"#718096" }}>✕</button>
-        </div>
-        {chem && <div style={{ fontSize:"12px", color:"#718096", marginBottom:16 }}>{chem.name}</div>}
-
-        {confirmDelete ? (
-          <div style={{ background:"#FFF5F5", border:"1.5px solid #FED7D7", borderRadius:12, padding:"16px", marginBottom:16 }}>
-            <div style={{ fontSize:"14px", fontWeight:600, color:"#C53030", marginBottom:12 }}>정말 이 이력을 삭제하시겠어요?</div>
-            <div style={{ fontSize:"12px", color:"#718096", marginBottom:16 }}>삭제하면 재고에서도 자동으로 되돌려집니다.</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-              <button onClick={() => setConfirmDelete(false)} style={{ ...btnStyle, background:"#EDF2F7", color:"#4A5568" }}>취소</button>
-              <button onClick={() => onDelete()} style={{ ...btnStyle, background:"#E53E3E", color:"#fff" }}>삭제 확인</button>
-            </div>
-          </div>
-        ) : (
+      <section className="pane detail-pane">
+        {selected ? (
           <>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-              <div>
-                <label style={labelStyle}>유형</label>
-                <div style={{ display:"flex", gap:8 }}>
-                  {["out","in"].map((t) => (
-                    <button key={t} onClick={() => setEditData((p) => ({ ...p, type:t }))}
-                      style={{ flex:1, padding:"8px", borderRadius:8, border:"2px solid", cursor:"pointer", fontWeight:600, fontSize:"13px",
-                        borderColor: editData.type===t ? (t==="in"?"#38A169":"#E53E3E") : "#E2E8F0",
-                        background:  editData.type===t ? (t==="in"?"#F0FFF4":"#FFF5F5") : "#fff",
-                        color:       editData.type===t ? (t==="in"?"#22543D":"#822727") : "#718096" }}>
-                      {t==="in"?"입고":"출고"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label style={labelStyle}>수량 *</label>
-                <div style={{ display:"flex", gap:6 }}>
-                  <input type="number" value={editData.amount} onChange={(e) => setEditData((p) => ({ ...p, amount:e.target.value }))}
-                    placeholder="0" style={{ ...inputStyle, flex:1, minWidth:0 }} />
-                  {unitOpts.length > 1
-                    ? <select value={editUnit} onChange={(e) => setEditUnit(e.target.value)}
-                        style={{ ...inputStyle, padding:"10px 6px", width:60, flexShrink:0 }}>
-                        {unitOpts.map((o) => <option key={o.label} value={o.label}>{o.label}</option>)}
-                      </select>
-                    : <span style={{ ...inputStyle, background:"#F7FAFC", color:"#718096", flexShrink:0, display:"flex", alignItems:"center" }}>{chem?.unit}</span>
-                  }
-                </div>
+            <div className="detail-head">
+              <div><h2>{selected.name}</h2><p>{selected.subject} · {selected.grade}</p></div>
+              <div className="button-row compact">
+                <button className="ghost small" onClick={() => setShowChemicalForm(true)}>약품 추가</button>
+                <button className="danger small" onClick={() => onDeleteExperiment(selected.id)}>삭제</button>
               </div>
             </div>
-            {[
-              { label:"담당자 *", key:"user",    placeholder:"이름" },
-              { label:"용도 / 사유", key:"purpose", placeholder:"예: 산염기 적정 실험 (2학년)" },
-              { label:"비고",     key:"note",    placeholder:"추가 메모" },
-            ].map(({ label, key, placeholder }) => (
-              <div key={key} style={{ marginBottom:12 }}>
-                <label style={labelStyle}>{label}</label>
-                <input type="text" value={editData[key]} onChange={(e) => setEditData((p) => ({ ...p, [key]:e.target.value }))}
-                  placeholder={placeholder} style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-              </div>
-            ))}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
-              <button onClick={() => setConfirmDelete(true)} style={{ ...btnStyle, background:"#FFF5F5", color:"#C53030", border:"1.5px solid #FED7D7" }}>🗑 삭제</button>
-              <button onClick={onClose} style={{ ...btnStyle, background:"#EDF2F7", color:"#4A5568" }}>취소</button>
-              <button onClick={handleSave} disabled={saving}
-                style={{ ...btnStyle, background:"#3182CE", color:"#fff", opacity:saving?0.6:1 }}>
-                {saving?"저장 중...":"저장"}
-              </button>
+            <p className="muted">{selected.description}</p>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>약품명</th><th>필요량</th><th>현재재고</th><th>위치</th><th>상태</th><th>준비</th><th></th></tr></thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.key}>
+                      <td>{row.chemicalName}</td>
+                      <td>{row.amount}{row.unit}</td>
+                      <td>{row.chemical ? `${row.chemical.stock}${row.chemical.unit}` : "-"}</td>
+                      <td>{row.chemical?.location || "-"}</td>
+                      <td><span className={row.ok ? "status ok" : "status bad"}>{row.ok ? "가능" : "재고없음"}</span></td>
+                      <td><input type="checkbox" checked={Boolean(checked[row.key])} onChange={(e) => setChecked((prev) => ({ ...prev, [row.key]: e.target.checked }))} /></td>
+                      <td><button className="danger small" onClick={() => onDeleteExpChemical(row.key)}>삭제</button></td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && <tr><td colSpan="7" className="empty-cell">준비할 약품이 없습니다.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="button-row right">
+              <button className="ghost" onClick={toggleAll}>{allChecked ? "전체 해제" : "전체 체크"}</button>
+              <button className="primary" disabled={preparing} onClick={async () => {
+                setPreparing(true);
+                try {
+                  if (await onPrepared(selected, rows.filter((row) => checked[row.key]), prepareRequestId)) setPrepareRequestId(makeId("B"));
+                } finally {
+                  setPreparing(false);
+                }
+              }}>{preparing ? "기록 중..." : "준비 완료 — 입출고 기록"}</button>
             </div>
           </>
-        )}
-      </div>
+        ) : <div className="empty">실험을 선택해주세요.</div>}
+      </section>
+
+      {showExperimentForm && (
+        <Modal title="실험 추가" onClose={() => setShowExperimentForm(false)}>
+          <div className="form-grid">
+            <label className="wide"><span>실험명</span><input value={expForm.name} onChange={(e) => setExpForm((p) => ({ ...p, name: e.target.value }))} /></label>
+            <label><span>과목</span><select value={expForm.subject} onChange={(e) => setExpForm((p) => ({ ...p, subject: e.target.value }))}><option>화학</option><option>생물</option><option>물리</option></select></label>
+            <label><span>학년</span><input value={expForm.grade} onChange={(e) => setExpForm((p) => ({ ...p, grade: e.target.value }))} /></label>
+            <label className="wide"><span>설명</span><textarea value={expForm.description} onChange={(e) => setExpForm((p) => ({ ...p, description: e.target.value }))} /></label>
+          </div>
+          <div className="button-row right"><button className="primary" onClick={() => { onAddExperiment(expForm); setExpForm(emptyExperiment); setShowExperimentForm(false); }}>저장</button></div>
+        </Modal>
+      )}
+
+      {showChemicalForm && selected && (
+        <Modal title="실험 약품 추가" onClose={() => setShowChemicalForm(false)}>
+          <div className="form-grid">
+            <label className="wide"><span>약품명</span><input value={chemForm.chemicalName} onChange={(e) => setChemForm((p) => ({ ...p, chemicalName: e.target.value }))} /></label>
+            <label><span>필요량</span><input type="number" value={chemForm.amount} onChange={(e) => setChemForm((p) => ({ ...p, amount: e.target.value }))} /></label>
+            <label><span>단위</span><select value={chemForm.unit} onChange={(e) => setChemForm((p) => ({ ...p, unit: e.target.value }))}><option>g</option><option>mg</option><option>kg</option><option>mL</option><option>L</option><option>개</option></select></label>
+            <label className="wide"><span>비고</span><input value={chemForm.note} onChange={(e) => setChemForm((p) => ({ ...p, note: e.target.value }))} /></label>
+          </div>
+          <div className="button-row right"><button className="primary" onClick={() => { onAddExpChemical({ ...chemForm, experimentId: selected.id }); setChemForm(emptyExpChemical); setShowChemicalForm(false); }}>저장</button></div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-// ─── Main App ───
-export default function LabInventoryApp() {
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+export default function App() {
+  const [demoMode, setDemoMode] = useState(api.isDemoMode());
+  const [showSetup, setShowSetup] = useState(api.isDemoMode() && localStorage.getItem("demoStarted") !== "1");
   const [chemicals, setChemicals] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [activeTab, setActiveTab] = useState("dashboard");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [experiments, setExperiments] = useState([]);
+  const [expChemicals, setExpChemicals] = useState([]);
+  const [activeTab, setActiveTab] = useState("inventory");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("전체");
   const [selectedChemical, setSelectedChemical] = useState(null);
-  const [showScanner, setShowScanner] = useState(false);
-  const [showLogForm, setShowLogForm] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [showQRModal, setShowQRModal] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
-  const [showEditLog, setShowEditLog] = useState(false);
-  const [editingLog, setEditingLog] = useState(null);
-  const [logFormData, setLogFormData] = useState({ chemicalId:"", type:"out", amount:"", user:"", purpose:"", note:"" });
-  const [logUnit, setLogUnit] = useState("");
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [toast, setToast] = useState(null);
-  const [confirmDeleteChem, setConfirmDeleteChem] = useState(false);
-  const [showEditChemical, setShowEditChemical] = useState(false);
+  const [chemicalModal, setChemicalModal] = useState(null);
+  const [logModal, setLogModal] = useState(false);
+  const [logStartDate, setLogStartDate] = useState("");
+  const [logEndDate, setLogEndDate] = useState("");
+  const [toast, setToast] = useState("");
 
-  const showToast = (message, type = "success") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 2500);
+  const notify = (message) => {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2400);
   };
 
-  // 로그인한 사용자의 학교명 (데이터 격리 키)
-  const schoolId = user?.user_metadata?.school_name?.trim() || "";
+  const loadDemo = () => {
+    setChemicals(SAMPLE_CHEMICALS.map(normalizeChemical));
+    setLogs([]);
+    setExperiments(EXPERIMENT_PRESETS.slice(0, 8).map(({ chemicals: _c, ...exp }) => exp));
+    setExpChemicals(EXPERIMENT_PRESETS.slice(0, 8).flatMap((exp) => exp.chemicals.map((c) => ({ ...c, experimentId: exp.id, chemicalName: c.name, note: c.note || "" }))));
+  };
 
-  // ─── Auth ───
-  useEffect(() => {
-    if (IS_DEMO) {
-      setUser({ email: "demo@demo.com", user_metadata: {} });
-      setAuthLoading(false);
+  const loadData = async () => {
+    if (api.isDemoMode()) {
+      setDemoMode(true);
+      if (chemicals.length === 0) loadDemo();
       return;
     }
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // ─── Data Fetch ───
-  const fetchChemicals = async () => {
-    if (IS_DEMO) return;
-    const { data } = await supabase.from("chemicals").select("*").order("id");
-    if (data) setChemicals(data.map(chemToApp));
-  };
-  const fetchLogs = async () => {
-    if (IS_DEMO) return;
-    const { data } = await supabase.from("logs").select("*").order("date", { ascending: false });
-    if (data) setLogs(data.map(logToApp));
+    setDemoMode(false);
+    const [remoteChemicals, remoteLogs, remoteExperiments, remoteExpChemicals] = await Promise.all([api.fetchChemicals(), api.fetchLogs(), api.fetchExperiments(), api.fetchExpChemicals()]);
+    const experimentList = (remoteExperiments || []).map((e) => ({ id: e.id, name: e.name, description: e.description || "", subject: e.subject || "화학", grade: e.grade || "" }));
+    setChemicals((remoteChemicals || []).map(normalizeChemical));
+    setLogs((remoteLogs || []).map(normalizeLog).sort((a, b) => new Date(b.date) - new Date(a.date)));
+    setExperiments(experimentList);
+    setExpChemicals((remoteExpChemicals || []).map((item) => ({ ...item, amount: Number(item.amount || 0), note: item.note || "" })));
   };
 
-  // ─── Realtime 구독 + 초기 데이터 로드 ───
+  useEffect(() => { loadData().catch(() => notify("데이터를 불러오지 못했습니다.")); }, []);
   useEffect(() => {
-    if (!user) return;
-    if (IS_DEMO) {
-      setChemicals(SAMPLE_CHEMICALS);
-      setLogs(SAMPLE_LOGS.map((l, i) => ({ ...l, id: `demo-log-${i}` })));
-      return;
-    }
-    const init = async () => {
-      const { count } = await supabase.from("chemicals").select("id", { count:"exact", head:true });
-      if (count === 0) { setShowSetup(true); }
-      else { await fetchChemicals(); await fetchLogs(); }
-    };
-    init();
-    const channel = supabase
-      .channel("lab-changes")
-      .on("postgres_changes", { event:"*", schema:"public", table:"chemicals" }, fetchChemicals)
-      .on("postgres_changes", { event:"*", schema:"public", table:"logs" }, fetchLogs)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
+    const id = window.setInterval(() => loadData().catch(() => {}), 30000);
+    return () => window.clearInterval(id);
+  }, [chemicals.length]);
 
-  useEffect(() => {
-    if (selectedChemical) {
-      const updated = chemicals.find((c) => c.id === selectedChemical.id);
-      if (updated) setSelectedChemical(updated);
-    }
-  }, [chemicals]);
-
-  const handleSetupComplete = async () => {
-    setShowSetup(false);
-    await fetchChemicals();
-    await fetchLogs();
-  };
-
-  // ─── Stats ───
+  const categories = useMemo(() => ["전체", ...new Set(chemicals.map((c) => c.category).filter(Boolean))], [chemicals]);
+  const filteredChemicals = chemicals.filter((c) => {
+    const text = [c.name, c.id, c.category, c.location, c.casNo, ...toArray(c.aliases)].join(" ").toLowerCase();
+    return (category === "전체" || c.category === category) && text.includes(search.toLowerCase());
+  });
   const stats = {
-    total:     chemicals.length,
-    lowStock:  chemicals.filter((c) => c.stock <= c.minStock).length,
-    warning:   chemicals.filter((c) => c.stock > c.minStock && c.stock <= c.minStock * 2).length,
-    todayLogs: logs.filter((l) => new Date(l.date).toDateString() === new Date().toDateString()).length,
-    hazardous: chemicals.filter((c) => c.hazards.includes("toxic") || c.hazards.includes("corrosive")).length,
+    total: chemicals.length,
+    low: chemicals.filter((c) => c.stock <= c.minStock).length,
+    logsToday: logs.filter((l) => new Date(l.date).toDateString() === new Date().toDateString()).length,
   };
-  const categories = [...new Set(chemicals.map((c) => c.category))];
+  const invalidLogRange = Boolean(logStartDate && logEndDate && logStartDate > logEndDate);
+  const filteredLogs = invalidLogRange ? [] : logs.filter((log) => {
+    const date = localDateKey(log.date);
+    if (!logStartDate && !logEndDate) return true;
+    return Boolean(date) && (!logStartDate || date >= logStartDate) && (!logEndDate || date <= logEndDate);
+  });
+  const printableLogs = filteredLogs.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+  const printRangeLabel = logStartDate || logEndDate
+    ? `${logStartDate || "시작일 미지정"} ~ ${logEndDate || "종료일 미지정"}`
+    : "전체 기간";
 
-  // ─── 입출고 제출 ───
-  const handleLogSubmit = async () => {
-    if (!logFormData.chemicalId || !logFormData.amount || !logFormData.user) {
-      showToast("필수 항목을 입력해주세요.", "error"); return;
-    }
-    const chem = chemicals.find((c) => c.id === logFormData.chemicalId);
-    const unitOpts = getUnitOptions(chem?.unit || "");
-    const convFactor = unitOpts.find((o) => o.label === logUnit)?.factor ?? 1;
-    const finalAmount = Number(logFormData.amount) * convFactor;
-    const newLog = {
-      id: `demo-log-${Date.now()}`, chemicalId: logFormData.chemicalId,
-      type: logFormData.type, amount: finalAmount,
-      user: logFormData.user, purpose: logFormData.purpose,
-      note: logFormData.note, date: new Date().toISOString(),
-    };
-    if (IS_DEMO) {
-      setLogs((prev) => [newLog, ...prev]);
-      setChemicals((prev) => prev.map((c) => {
-        if (c.id !== logFormData.chemicalId) return c;
-        const delta = logFormData.type === "in" ? finalAmount : -finalAmount;
-        return { ...c, stock: Math.max(0, c.stock + delta), lastUpdated: new Date().toISOString().slice(0,10) };
-      }));
-    } else {
-      try {
-        await supabase.from("logs").insert({
-          chemical_id: logFormData.chemicalId, type: logFormData.type,
-          amount: finalAmount, user_name: logFormData.user,
-          purpose: logFormData.purpose, note: logFormData.note, date: new Date().toISOString(), school_id: schoolId,
-        });
-        if (chem) {
-          const delta = logFormData.type === "in" ? finalAmount : -finalAmount;
-          await supabase.from("chemicals").update({ stock: Math.max(0, chem.stock + delta), last_updated: new Date().toISOString().slice(0,10) }).eq("id", logFormData.chemicalId);
-        }
-      } catch { showToast("처리 중 오류가 발생했습니다.", "error"); return; }
-    }
-    showToast(logFormData.type === "in" ? "입고 처리되었습니다." : "출고 처리되었습니다.");
-    setShowLogForm(false);
-    setLogFormData({ chemicalId:"", type:"out", amount:"", user:"", purpose:"", note:"" });
-    setLogUnit("");
+  const persistChemicalUpdate = async (nextChemical) => {
+    const { stock: _stock, ...details } = nextChemical;
+    setChemicals((prev) => prev.map((c) => c.id === nextChemical.id ? { ...c, ...details, stock: c.stock } : c));
+    if (!demoMode) await api.updateChemical(nextChemical.id, details);
   };
 
-  // ─── 입출고 이력 수정 ───
-  const handleEditLog = async ({ type, amount, user, purpose, note }) => {
-    const log = editingLog;
-    const chem = chemicals.find((c) => c.id === log.chemicalId);
-    const oldEffect = log.type === "in" ? log.amount : -log.amount;
-    const newEffect = type === "in" ? amount : -amount;
-    const delta = newEffect - oldEffect;
-    const newStock = chem ? Math.max(0, chem.stock + delta) : 0;
-    if (IS_DEMO) {
-      setLogs((prev) => prev.map((l) => l.id !== log.id ? l : { ...l, type, amount, user, purpose, note }));
-      if (chem) setChemicals((prev) => prev.map((c) => c.id !== chem.id ? c : { ...c, stock: newStock, lastUpdated: new Date().toISOString().slice(0,10) }));
+  const saveChemical = async (chemical) => {
+    if (chemicals.some((c) => c.id === chemical.id)) {
+      await persistChemicalUpdate(chemical);
+      notify(`${chemical.name} 수정 완료`);
     } else {
-      const { error: logErr } = await supabase.from("logs").update({ type, amount, user_name: user, purpose, note }).eq("id", log.id);
-      if (logErr) { showToast("수정 중 오류가 발생했습니다.", "error"); return; }
-      if (chem) {
-        const { error: chemErr } = await supabase.from("chemicals").update({ stock: newStock, last_updated: new Date().toISOString().slice(0,10) }).eq("id", chem.id);
-        if (chemErr) { showToast("재고 업데이트 중 오류가 발생했습니다.", "error"); return; }
-      }
-      await fetchLogs();
-      await fetchChemicals();
+      setChemicals((prev) => [...prev, chemical]);
+      if (!demoMode) await api.addChemical(chemical);
+      notify(`${chemical.name} 등록 완료`);
     }
-    showToast("이력이 수정되었습니다.");
-    setShowEditLog(false);
-    setEditingLog(null);
+    setChemicalModal(null);
   };
 
-  // ─── 새 약품 등록 ───
-  const handleAddChemical = async (chem) => {
-    if (IS_DEMO) {
-      setChemicals((prev) => [...prev, chem].sort((a, b) => a.id.localeCompare(b.id)));
-    } else {
-      const { error } = await supabase.from("chemicals").insert({ ...chemToDb(chem), school_id: schoolId });
-      if (error) { showToast("등록에 실패했습니다.", "error"); return; }
-    }
-    showToast(`${chem.name} 등록 완료!`);
-    setShowAddForm(false);
-  };
-
-  // ─── 약품 정보 수정 ───
-  const handleUpdateChemical = async (updated) => {
-    if (IS_DEMO) {
-      setChemicals((prev) => prev.map((c) => c.id === updated.id ? updated : c));
-    } else {
-      const { error } = await supabase.from("chemicals").update(chemToDb(updated)).eq("id", updated.id);
-      if (error) { showToast("수정에 실패했습니다.", "error"); return; }
-      await fetchChemicals();
-    }
-    setSelectedChemical(updated);
-    showToast(`${updated.name} 수정 완료!`);
-    setShowEditChemical(false);
-  };
-
-  // ─── 입출고 이력 삭제 ───
-  const handleDeleteLog = async () => {
-    const log = editingLog;
-    const chem = chemicals.find((c) => c.id === log.chemicalId);
-    const revertDelta = log.type === "in" ? -log.amount : log.amount;
-    const newStock = chem ? Math.max(0, chem.stock + revertDelta) : 0;
-    if (IS_DEMO) {
-      setLogs((prev) => prev.filter((l) => l.id !== log.id));
-      if (chem) setChemicals((prev) => prev.map((c) => c.id !== chem.id ? c : { ...c, stock: newStock, lastUpdated: new Date().toISOString().slice(0,10) }));
-    } else {
-      const { error: delErr } = await supabase.from("logs").delete().eq("id", log.id);
-      if (delErr) { showToast("삭제 중 오류가 발생했습니다.", "error"); return; }
-      if (chem) {
-        const { error: chemErr } = await supabase.from("chemicals").update({ stock: newStock, last_updated: new Date().toISOString().slice(0,10) }).eq("id", chem.id);
-        if (chemErr) { showToast("재고 업데이트 중 오류가 발생했습니다.", "error"); return; }
-      }
-      await fetchLogs();
-      await fetchChemicals();
-    }
-    showToast("이력이 삭제되었습니다.");
-    setShowEditLog(false);
-    setEditingLog(null);
-  };
-
-  // ─── 약품 삭제 ───
-  const handleDeleteChemical = async () => {
-    const chem = selectedChemical;
-    if (!chem) return;
-    if (IS_DEMO) {
-      setChemicals((prev) => prev.filter((c) => c.id !== chem.id));
-      setLogs((prev) => prev.filter((l) => l.chemicalId !== chem.id));
-    } else {
-      const { error: logsErr } = await supabase.from("logs").delete().eq("chemical_id", chem.id);
-      if (logsErr) { showToast("삭제 중 오류가 발생했습니다.", "error"); return; }
-      const { error: chemErr } = await supabase.from("chemicals").delete().eq("id", chem.id);
-      if (chemErr) { showToast("삭제 중 오류가 발생했습니다.", "error"); return; }
-      await fetchChemicals();
-      await fetchLogs();
-    }
-    showToast(`${chem.name} 삭제 완료`);
-    setConfirmDeleteChem(false);
+  const removeChemical = async (chemical) => {
+    setChemicals((prev) => prev.filter((c) => c.id !== chemical.id));
+    setLogs((prev) => prev.filter((l) => l.chemicalId !== chemical.id));
+    if (!demoMode) await api.deleteChemical(chemical.id);
     setSelectedChemical(null);
-    setActiveTab("inventory");
+    notify(`${chemical.name} 삭제 완료`);
   };
 
-  // ─── 기존 약품 선택 (중복 등록 방지) ───
-  const handleSelectExisting = (chem, type = "in") => {
-    setShowAddForm(false);
-    setLogFormData({ chemicalId: chem.id, type, amount: "", user: "", purpose: "", note: "" });
-    setShowLogForm(true);
+  const persistTransactions = async (entries) => {
+    const transactionLogs = entries.map(normalizeLog);
+    if (demoMode) {
+      const result = applyTransactions(chemicals, transactionLogs);
+      const savedIds = new Set(result.logs.map((log) => log.id));
+      setChemicals(result.chemicals);
+      setLogs((prev) => [...result.logs.slice().reverse(), ...prev.filter((log) => !savedIds.has(log.id))].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      return;
+    }
+
+    const result = await api.recordTransactions(transactionLogs);
+    if (!result) throw new Error("출납 기록을 저장하지 못했습니다.");
+    const updatedById = Object.fromEntries((result.chemicals || []).map((chemical) => [chemical.id, normalizeChemical(chemical)]));
+    const savedLogs = (result.logs || transactionLogs).map(normalizeLog);
+    const savedIds = new Set(savedLogs.map((log) => log.id));
+    setChemicals((prev) => prev.map((chemical) => updatedById[chemical.id] || chemical));
+    setLogs((prev) => [...savedLogs, ...prev.filter((log) => !savedIds.has(log.id))].sort((a, b) => new Date(b.date) - new Date(a.date)));
   };
 
-  const handleSignOut = async () => {
-    if (!IS_DEMO) await supabase.auth.signOut();
-    setChemicals([]); setLogs([]); setUser(null);
+  const saveLog = async (form) => {
+    const chemical = chemicals.find((c) => c.id === form.chemicalId);
+    if (!chemical) throw new Error("약품을 찾을 수 없습니다.");
+    const amount = convertToBase(form.amount, form.unit, chemical.unit);
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("출납 수량은 0보다 커야 합니다.");
+    const log = normalizeLog({ ...form, id: form.id || makeId("L"), amount, unit: chemical.unit, chemicalName: chemical.name, date: new Date().toISOString() });
+    await persistTransactions([log]);
+    setLogModal(false);
+    notify(log.type === "in" ? "입고 기록 완료" : "출고 기록 완료");
   };
 
-  const handleScan = (code) => {
-    setShowScanner(false);
-    const found = chemicals.find((c) => c.id === code);
-    if (found) { setSelectedChemical(found); setActiveTab("detail"); showToast(`${found.name} 인식됨`); }
-    else showToast("등록되지 않은 약품입니다.", "error");
+  const addExperiment = async (form) => {
+    if (!form.name.trim()) return;
+    const exp = { id: makeId("EXP"), ...form };
+    setExperiments((prev) => [...prev, exp]);
+    if (!demoMode) await api.addExperiment(exp);
+    notify("실험이 추가되었습니다.");
   };
 
-  const filteredChemicals = chemicals.filter((c) =>
-    matchSearch(searchQuery, c) && (filterCategory === "all" || c.category === filterCategory)
-  );
-
-  // ─── Render: Dashboard ───
-  const renderDashboard = () => (
-    <div style={{ padding:"0 16px 100px" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", marginBottom:"20px" }}>
-        <div style={{ ...cardStyle, background:"linear-gradient(135deg, #1a365d 0%, #2a4a7f 100%)", color:"#fff", gridColumn:"span 2", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <div>
-            <div style={{ fontSize:"13px", opacity:0.8, marginBottom:4 }}>전체 약품</div>
-            <div style={{ fontSize:"32px", fontWeight:700, fontFamily:"monospace" }}>{stats.total}<span style={{ fontSize:"14px", fontWeight:400, marginLeft:4 }}>종</span></div>
-          </div>
-          <div style={{ fontSize:"40px" }}>🧪</div>
-        </div>
-        {[
-          { label:"오늘 입출고", val:stats.todayLogs, color:"#3182CE" },
-          { label:"위험물",    val:stats.hazardous,  color:"#805AD5" },
-        ].map(({ label, val, color }) => (
-          <div key={label} style={{ ...cardStyle, borderLeft:`4px solid ${color}` }}>
-            <div style={{ fontSize:"12px", color:"#718096", marginBottom:4 }}>{label}</div>
-            <div style={{ fontSize:"28px", fontWeight:700, color, fontFamily:"monospace" }}>{val}</div>
-          </div>
-        ))}
-      </div>
-
-      {stats.lowStock > 0 && (
-        <div style={{ marginBottom:"20px" }}>
-          <div style={{ fontSize:"14px", fontWeight:600, color:"#E53E3E", marginBottom:10 }}>⚠️ 재고 부족 알림</div>
-          {chemicals.filter((c) => c.stock <= c.minStock).map((c) => (
-            <div key={c.id} onClick={() => { setSelectedChemical(c); setActiveTab("detail"); }}
-              style={{ ...cardStyle, borderLeft:"4px solid #E53E3E", marginBottom:8, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div>
-                <div style={{ fontSize:"14px", fontWeight:600 }}>{c.name}</div>
-                <div style={{ fontSize:"12px", color:"#718096" }}>위치: {c.location}</div>
-              </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:"16px", fontWeight:700, color:"#E53E3E", fontFamily:"monospace" }}>{c.stock}{c.unit}</div>
-                <div style={{ fontSize:"11px", color:"#A0AEC0" }}>최소 {c.minStock}{c.unit}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div>
-        <div style={{ fontSize:"14px", fontWeight:600, color:"#2D3748", marginBottom:10 }}>📋 최근 입출고 내역</div>
-        {logs.slice(0,5).map((log) => {
-          const chem = chemicals.find((c) => c.id === log.chemicalId);
-          return (
-            <div key={log.id} style={{ ...cardStyle, marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ width:36, height:36, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"14px", fontWeight:700, flexShrink:0, background: log.type==="in"?"#C6F6D5":"#FED7D7", color: log.type==="in"?"#22543D":"#822727" }}>
-                {log.type==="in"?"입":"출"}
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:"13px", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{chem?.name||log.chemicalId}</div>
-                <div style={{ fontSize:"11px", color:"#718096" }}>{log.purpose}</div>
-              </div>
-              <div style={{ textAlign:"right", flexShrink:0 }}>
-                <div style={{ fontSize:"14px", fontWeight:600, fontFamily:"monospace", color: log.type==="in"?"#38A169":"#E53E3E" }}>
-                  {log.type==="in"?"+":"-"}{log.amount}{chem?.unit}
-                </div>
-                <div style={{ fontSize:"10px", color:"#A0AEC0" }}>{formatDate(log.date)}</div>
-              </div>
-              <button onClick={() => { setEditingLog(log); setShowEditLog(true); }}
-                style={{ background:"#EDF2F7", border:"none", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:"14px", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}
-                title="수정">✏️</button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  // ─── Render: Inventory ───
-  const renderInventory = () => (
-    <div style={{ padding:"0 16px 100px" }}>
-      {/* 검색 */}
-      <div style={{ position:"relative", marginBottom:12 }}>
-        <input type="text" placeholder="약품명, 별칭, 초성(ㅇㅌㄴ) 검색..."
-          value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ ...inputStyle, paddingLeft:"36px", width:"100%", boxSizing:"border-box" }} />
-        <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:"16px", color:"#A0AEC0" }}>🔍</span>
-      </div>
-
-      {/* 카테고리 필터 + 엑셀 저장 */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, gap:8 }}>
-        <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:2, flex:1 }}>
-          {["all",...categories].map((cat) => (
-            <button key={cat} onClick={() => setFilterCategory(cat)}
-              style={{ ...chipStyle, ...(filterCategory===cat ? chipActiveStyle : {}) }}>
-              {cat==="all"?"전체":cat}
-            </button>
-          ))}
-        </div>
-        <button onClick={() => exportToCSV(filteredChemicals)}
-          style={{ flexShrink:0, display:"flex", alignItems:"center", gap:5, padding:"7px 12px", background:"#F0FFF4", border:"1.5px solid #C6F6D5", borderRadius:10, fontSize:"12px", fontWeight:700, color:"#276749", cursor:"pointer", whiteSpace:"nowrap" }}>
-          📊 엑셀 저장
-        </button>
-      </div>
-
-      {/* 약품 수 */}
-      <div style={{ fontSize:"12px", color:"#A0AEC0", marginBottom:10 }}>
-        {filterCategory === "all" ? `전체 ${filteredChemicals.length}종` : `${filterCategory} ${filteredChemicals.length}종`}
-      </div>
-
-      {filteredChemicals.map((chem) => {
-        const status = getStockStatus(chem.stock, chem.minStock);
-        return (
-          <div key={chem.id} onClick={() => { setSelectedChemical(chem); setActiveTab("detail"); }}
-            style={{ ...cardStyle, marginBottom:10, cursor:"pointer" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:"14px", fontWeight:700, color:"#1A202C" }}>{chem.name}</div>
-                <div style={{ fontSize:"11px", color:"#A0AEC0" }}>{chem.category}</div>
-              </div>
-              {status.label && <span style={{ fontSize:"11px", fontWeight:600, padding:"2px 8px", borderRadius:10, color:status.color, background:status.bg }}>{status.label}</span>}
-            </div>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div style={{ display:"flex", gap:4 }}>
-                {chem.hazards.map((h) => <span key={h} title={GHS_PICTOGRAMS[h]?.label} style={{ fontSize:"14px" }}>{GHS_PICTOGRAMS[h]?.icon}</span>)}
-              </div>
-              <div>
-                <span style={{ fontSize:"18px", fontWeight:700, fontFamily:"monospace", color:status.color }}>{chem.stock.toLocaleString()}</span>
-                <span style={{ fontSize:"12px", color:"#718096", marginLeft:2 }}>{chem.unit}</span>
-              </div>
-            </div>
-            <div style={{ marginTop:8, height:4, background:"#EDF2F7", borderRadius:2, overflow:"hidden" }}>
-              <div style={{ height:"100%", borderRadius:2, width:`${Math.min(100,(chem.stock/(chem.minStock*5))*100)}%`, background:status.color }} />
-            </div>
-            <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
-              <span style={{ fontSize:"10px", color:"#A0AEC0" }}>위치: {chem.location}</span>
-              <span style={{ fontSize:"10px", color:"#A0AEC0" }}>최소: {chem.minStock}{chem.unit}</span>
-            </div>
-          </div>
-        );
-      })}
-      {filteredChemicals.length===0 && (
-        <div style={{ textAlign:"center", padding:"40px 0", color:"#A0AEC0" }}>
-          <div style={{ fontSize:"40px", marginBottom:8 }}>🔍</div>
-          <div style={{ fontSize:"14px" }}>검색 결과가 없습니다</div>
-        </div>
-      )}
-    </div>
-  );
-
-  // ─── Render: Detail ───
-  const renderDetail = () => {
-    if (!selectedChemical) return null;
-    const chem = selectedChemical;
-    const status = getStockStatus(chem.stock, chem.minStock);
-    const chemLogs = logs.filter((l) => l.chemicalId === chem.id);
-    return (
-      <div style={{ padding:"0 16px 100px" }}>
-        <button onClick={() => { setSelectedChemical(null); setActiveTab("inventory"); }}
-          style={{ background:"none", border:"none", color:"#3182CE", fontSize:"14px", padding:"8px 0", cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
-          ← 목록으로
-        </button>
-
-        <div style={{ ...cardStyle, marginBottom:16 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
-            <h2 style={{ fontSize:"18px", fontWeight:700, color:"#1A202C", margin:0 }}>{chem.name}</h2>
-            {status.label && <span style={{ fontSize:"12px", fontWeight:600, padding:"3px 10px", borderRadius:10, color:status.color, background:status.bg }}>{status.label}</span>}
-          </div>
-          <div style={{ textAlign:"center", padding:"16px 0", background:"#F7FAFC", borderRadius:12, marginBottom:16 }}>
-            <div style={{ fontSize:"12px", color:"#718096", marginBottom:4 }}>현재 재고</div>
-            <div style={{ fontSize:"36px", fontWeight:700, fontFamily:"monospace", color:status.color }}>
-              {chem.stock.toLocaleString()}<span style={{ fontSize:"16px", fontWeight:400, color:"#718096", marginLeft:4 }}>{chem.unit}</span>
-            </div>
-            <div style={{ margin:"8px 20px 0", height:6, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
-              <div style={{ height:"100%", borderRadius:3, width:`${Math.min(100,(chem.stock/(chem.minStock*5))*100)}%`, background:status.color }} />
-            </div>
-            <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:4 }}>최소 권장: {chem.minStock}{chem.unit}</div>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, fontSize:"13px" }}>
-            {[["분류",chem.category],["메모",chem.memo],["보관위치",chem.location],["공급처",chem.supplier],["최종수정",chem.lastUpdated],...(chem.casNo?[["CAS No.",chem.casNo]]:[])]  .map(([label,value]) => (
-              <div key={label} style={{ background:"#F7FAFC", padding:"8px 10px", borderRadius:8 }}>
-                <div style={{ fontSize:"11px", color:"#A0AEC0", marginBottom:2 }}>{label}</div>
-                <div style={{ fontWeight:600, color:"#2D3748" }}>{value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ ...cardStyle, marginBottom:16 }}>
-          <div style={{ fontSize:"14px", fontWeight:600, marginBottom:10 }}>⚠️ GHS 위험성 정보</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-            {chem.hazards.length === 0
-              ? <span style={{ fontSize:"13px", color:"#A0AEC0" }}>위험성 정보 없음</span>
-              : chem.hazards.map((h) => {
-                  const info = GHS_PICTOGRAMS[h];
-                  return (
-                    <div key={h} style={{ display:"flex", alignItems:"center", gap:6, background:"#FFF5F5", padding:"6px 10px", borderRadius:8, border:`1px solid ${info?.color}22` }}>
-                      <span style={{ fontSize:"18px" }}>{info?.icon}</span>
-                      <span style={{ fontSize:"12px", fontWeight:600, color:info?.color }}>{info?.label}</span>
-                    </div>
-                  );
-                })}
-          </div>
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-          <button onClick={() => { setLogFormData({ ...logFormData, chemicalId:chem.id, type:"out" }); setShowLogForm(true); }}
-            style={{ ...btnStyle, background:"#E53E3E", color:"#fff" }}>📤 출고</button>
-          <button onClick={() => { setLogFormData({ ...logFormData, chemicalId:chem.id, type:"in" }); setShowLogForm(true); }}
-            style={{ ...btnStyle, background:"#38A169", color:"#fff" }}>📥 입고</button>
-        </div>
-        <button onClick={() => setShowEditChemical(true)}
-          style={{ ...btnStyle, width:"100%", background:"#EBF8FF", color:"#2B6CB0", marginBottom:10, border:"1.5px solid #BEE3F8" }}>
-          ✏️ 약품 정보 수정
-        </button>
-        <button onClick={() => setShowQRModal(true)}
-          style={{ ...btnStyle, width:"100%", background:"#F7FAFC", color:"#4A5568", marginBottom:10, border:"1.5px solid #E2E8F0" }}>
-          📱 QR 코드 보기 / PNG 저장
-        </button>
-
-        {/* 약품 삭제 */}
-        {confirmDeleteChem ? (
-          <div style={{ background:"#FFF5F5", border:"1.5px solid #FED7D7", borderRadius:12, padding:"14px", marginBottom:16 }}>
-            <div style={{ fontSize:"14px", fontWeight:600, color:"#C53030", marginBottom:6 }}>⚠️ 정말 삭제하시겠어요?</div>
-            <div style={{ fontSize:"12px", color:"#718096", marginBottom:14 }}>
-              <strong>{chem.name}</strong>과 관련된 모든 입출고 이력도 함께 삭제됩니다.
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-              <button onClick={() => setConfirmDeleteChem(false)} style={{ ...btnStyle, background:"#EDF2F7", color:"#4A5568" }}>취소</button>
-              <button onClick={handleDeleteChemical} style={{ ...btnStyle, background:"#E53E3E", color:"#fff" }}>삭제 확인</button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setConfirmDeleteChem(true)}
-            style={{ ...btnStyle, width:"100%", background:"#FFF5F5", color:"#C53030", border:"1.5px solid #FED7D7", marginBottom:16 }}>
-            🗑 약품 삭제
-          </button>
-        )}
-
-        <div style={{ fontSize:"14px", fontWeight:600, marginBottom:10 }}>📋 입출고 이력</div>
-        {chemLogs.length===0
-          ? <div style={{ textAlign:"center", padding:20, color:"#A0AEC0", fontSize:"13px" }}>이력이 없습니다</div>
-          : chemLogs.map((log) => (
-            <div key={log.id} style={{ ...cardStyle, marginBottom:8, display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:32, height:32, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"12px", fontWeight:700, flexShrink:0, background: log.type==="in"?"#C6F6D5":"#FED7D7", color: log.type==="in"?"#22543D":"#822727" }}>
-                {log.type==="in"?"입":"출"}
-              </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:"12px", fontWeight:600 }}>{log.purpose || <span style={{ color:"#A0AEC0" }}>사유 없음</span>}</div>
-                <div style={{ fontSize:"11px", color:"#A0AEC0" }}>{log.user} · {formatDate(log.date)}</div>
-              </div>
-              <div style={{ fontSize:"14px", fontWeight:700, fontFamily:"monospace", color: log.type==="in"?"#38A169":"#E53E3E", marginRight:4 }}>
-                {log.type==="in"?"+":"-"}{log.amount}{chem.unit}
-              </div>
-              <button onClick={() => { setEditingLog(log); setShowEditLog(true); }}
-                style={{ background:"#EDF2F7", border:"none", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:"14px", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}
-                title="수정">✏️</button>
-            </div>
-          ))}
-      </div>
-    );
+  const removeExperiment = async (id) => {
+    setExperiments((prev) => prev.filter((exp) => exp.id !== id));
+    setExpChemicals((prev) => prev.filter((item) => item.experimentId !== id));
+    if (!demoMode) await api.deleteExperiment(id);
+    notify("실험을 삭제했습니다.");
   };
 
-  // ─── Render: Log Form ───
-  const renderLogForm = () => (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:500, padding:"20px", maxHeight:"85vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-          <h3 style={{ margin:0, fontSize:"16px", fontWeight:700 }}>{logFormData.type==="in"?"📥 입고 처리":"📤 출고 처리"}</h3>
-          <button onClick={() => setShowLogForm(false)} style={{ background:"none", border:"none", fontSize:"20px", cursor:"pointer", color:"#718096" }}>✕</button>
-        </div>
-        <div style={{ marginBottom:12 }}>
-          <label style={labelStyle}>약품 선택 *</label>
-          <select value={logFormData.chemicalId} onChange={(e) => {
-            const selChem = chemicals.find((c) => c.id === e.target.value);
-            setLogFormData({...logFormData, chemicalId:e.target.value});
-            setLogUnit(selChem?.unit || "");
-          }} style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }}>
-            <option value="">선택해주세요</option>
-            {chemicals.map((c) => <option key={c.id} value={c.id}>{c.name} (재고: {c.stock}{c.unit})</option>)}
-          </select>
-          {logFormData.chemicalId && (() => {
-            const sc = chemicals.find((c) => c.id === logFormData.chemicalId);
-            return sc ? (
-              <div style={{ marginTop:8, padding:"10px 14px", background:"#F7FAFC", borderRadius:10, borderLeft:"4px solid #3182CE" }}>
-                <div style={{ fontSize:"18px", fontWeight:800, color:"#1A202C", letterSpacing:"-0.3px" }}>{sc.name}</div>
-                <div style={{ fontSize:"12px", color:"#718096", marginTop:2 }}>재고 {sc.stock.toLocaleString()}{sc.unit} · {sc.location || "위치 미지정"}</div>
-              </div>
-            ) : null;
-          })()}
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-          <div>
-            <label style={labelStyle}>유형</label>
-            <div style={{ display:"flex", gap:8 }}>
-              {["out","in"].map((t) => (
-                <button key={t} onClick={() => setLogFormData({...logFormData, type:t})}
-                  style={{ flex:1, padding:"8px", borderRadius:8, border:"2px solid", cursor:"pointer", fontWeight:600, fontSize:"13px",
-                    borderColor: logFormData.type===t ? (t==="in"?"#38A169":"#E53E3E") : "#E2E8F0",
-                    background:  logFormData.type===t ? (t==="in"?"#F0FFF4":"#FFF5F5") : "#fff",
-                    color:       logFormData.type===t ? (t==="in"?"#22543D":"#822727") : "#718096" }}>
-                  {t==="in"?"입고":"출고"}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label style={labelStyle}>수량 *</label>
-            {(() => {
-              const selChem = chemicals.find((c) => c.id === logFormData.chemicalId);
-              const unitOpts = getUnitOptions(selChem?.unit || "");
-              return (
-                <div style={{ display:"flex", gap:6 }}>
-                  <input type="number" value={logFormData.amount} onChange={(e) => setLogFormData({...logFormData, amount:e.target.value})}
-                    placeholder="0" style={{ ...inputStyle, flex:1, minWidth:0 }} />
-                  {unitOpts.length > 1
-                    ? <select value={logUnit} onChange={(e) => setLogUnit(e.target.value)}
-                        style={{ ...inputStyle, padding:"10px 6px", width:60, flexShrink:0 }}>
-                        {unitOpts.map((o) => <option key={o.label} value={o.label}>{o.label}</option>)}
-                      </select>
-                    : <span style={{ ...inputStyle, background:"#F7FAFC", color:"#718096", flexShrink:0, display:"flex", alignItems:"center", padding:"10px 10px" }}>{selChem?.unit || "-"}</span>
-                  }
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-        {[
-          { label:"담당자 *", key:"user",    placeholder:"이름" },
-          { label:"용도 / 사유", key:"purpose", placeholder:"예: 산염기 적정 실험 (2학년)" },
-          { label:"비고",     key:"note",    placeholder:"추가 메모" },
-        ].map(({ label, key, placeholder }) => (
-          <div key={key} style={{ marginBottom:12 }}>
-            <label style={labelStyle}>{label}</label>
-            <input type="text" value={logFormData[key]} onChange={(e) => setLogFormData({...logFormData, [key]:e.target.value})}
-              placeholder={placeholder} style={{ ...inputStyle, width:"100%", boxSizing:"border-box" }} />
-          </div>
-        ))}
-        <button onClick={handleLogSubmit}
-          style={{ ...btnStyle, width:"100%", background: logFormData.type==="in"?"#38A169":"#E53E3E", color:"#fff", fontSize:"15px", padding:"14px" }}>
-          {logFormData.type==="in"?"입고 확인":"출고 확인"}
-        </button>
-      </div>
-    </div>
-  );
+  const addExperimentChemical = async (item) => {
+    if (!item.chemicalName.trim()) return;
+    const next = { ...item, amount: Number(item.amount || 0), note: item.note || "" };
+    setExpChemicals((prev) => [...prev, next]);
+    if (!demoMode) await api.addExpChemical(next);
+    notify("약품을 추가했습니다.");
+  };
 
-  // ─── Auth Screens ───
-  if (authLoading) return <LoadingScreen />;
-  if (!user)       return <LoginScreen schoolName={SCHOOL_NAME} />;
+  const removeExperimentChemical = async (id) => {
+    setExpChemicals((prev) => prev.filter((item) => `${item.experimentId}||${item.chemicalName}` !== id));
+    if (!demoMode) await api.deleteExpChemical(id);
+    notify("실험 약품을 삭제했습니다.");
+  };
+
+  const importPresets = async () => {
+    const existing = new Set(experiments.map((e) => e.id));
+    const newExperiments = EXPERIMENT_PRESETS.filter((exp) => !existing.has(exp.id)).map(({ chemicals: _c, ...exp }) => exp);
+    const newMaterials = EXPERIMENT_PRESETS.filter((exp) => !existing.has(exp.id)).flatMap((exp) => exp.chemicals.map((c) => ({ experimentId: exp.id, chemicalName: c.name, amount: c.amount, unit: c.unit, note: c.note || "" })));
+    setExperiments((prev) => [...prev, ...newExperiments]);
+    setExpChemicals((prev) => [...prev, ...newMaterials]);
+    if (!demoMode) {
+      if (newExperiments.length > 0) await api.batchAddRows("experiments", newExperiments);
+      if (newMaterials.length > 0) await api.batchAddRows("experiment_chemicals", newMaterials);
+    }
+    notify(`기본 실험 ${newExperiments.length}개를 불러왔습니다.`);
+  };
+
+  const markPrepared = async (experiment, rows, requestId) => {
+    if (!experiment || rows.length === 0) {
+      notify("체크된 약품이 없습니다.");
+      return false;
+    }
+    if (rows.some((row) => !row.chemical)) {
+      notify("등록되지 않은 약품이 포함되어 있습니다.");
+      return false;
+    }
+    const transactionLogs = rows.map((row, index) => normalizeLog({
+      id: `${requestId}-${index + 1}`,
+      chemicalId: row.chemical.id,
+      chemicalName: row.chemical.name,
+      type: "out",
+      amount: row.needed,
+      unit: row.chemical.unit,
+      user: "실험 준비",
+      purpose: `실험: ${experiment.name}`,
+      note: row.note || "",
+      date: new Date().toISOString(),
+    }));
+    try {
+      await persistTransactions(transactionLogs);
+      notify(`${experiment.name} 준비 완료 (${transactionLogs.length}건 기록됨)`);
+      return true;
+    } catch (err) {
+      notify(err.message || "출고 기록을 저장하지 못했습니다.");
+      return false;
+    }
+  };
+
+  if (showSetup) {
+    return <SetupScreen onConnected={() => { setShowSetup(false); loadData(); }} onDemo={() => { localStorage.setItem("demoStarted", "1"); setShowSetup(false); setDemoMode(true); loadDemo(); }} />;
+  }
 
   return (
-    <div style={{ maxWidth:500, margin:"0 auto", background:"#F7FAFC", minHeight:"100vh", fontFamily:"'Pretendard',-apple-system,sans-serif", position:"relative" }}>
-      <style>{`
-        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
-        * { -webkit-tap-highlight-color: transparent; }
-        ::-webkit-scrollbar { display: none; }
-      `}</style>
-
-      {IS_DEMO && (
-        <div style={{ background:"#ECC94B", color:"#744210", fontSize:"12px", fontWeight:600, textAlign:"center", padding:"6px", letterSpacing:"0.3px" }}>
-          ⚡ 데모 모드 — 데이터는 저장되지 않습니다 (새로고침 시 초기화)
+    <div className="app">
+      <style>{styles}{printStyles}</style>
+      {demoMode && <div className="demo-banner">데모 모드 · Google Sheets URL을 설정하면 저장됩니다.</div>}
+      <header className="app-header">
+        <div><h1>시약장 관리</h1><p>{SCHOOL_NAME}</p></div>
+        <div className="header-actions">
+          <button className="icon-button" title="설정" onClick={() => setShowSetup(true)}>⚙</button>
+          <button className="primary small" onClick={() => setChemicalModal(emptyChemical)}>약품 추가</button>
         </div>
+      </header>
+
+      <nav className="tabs">
+        <button className={activeTab === "inventory" ? "active" : ""} onClick={() => setActiveTab("inventory")}>재고현황</button>
+        <button className={activeTab === "experiments" ? "active" : ""} onClick={() => setActiveTab("experiments")}>실험재료</button>
+        <button className={activeTab === "logs" ? "active" : ""} onClick={() => setActiveTab("logs")}>입출고이력</button>
+        <button className={activeTab === "scan" ? "active" : ""} onClick={() => setActiveTab("scan")}>QR스캔</button>
+      </nav>
+
+      <section id="print-sheet" aria-hidden="true">
+        <header className="print-header">
+          <h1>{SCHOOL_NAME} 입출고 이력</h1>
+          <div className="print-meta">
+            <span>조회 기간: {printRangeLabel}</span>
+            <span>출력 일시: {new Date().toLocaleString("ko-KR")}</span>
+            <span>총 {filteredLogs.length}건</span>
+          </div>
+        </header>
+        <table className="print-log-table">
+          <thead>
+            <tr><th>번호</th><th>일시</th><th>유형</th><th>약품명</th><th>수량</th><th>담당자</th><th>용도·비고</th><th>관리자 서명</th></tr>
+          </thead>
+          <tbody>
+            {printableLogs.map((log, index) => {
+              const date = new Date(log.date);
+              const dateText = Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+              return (
+                <tr key={log.id}>
+                  <td>{index + 1}</td>
+                  <td>{dateText}</td>
+                  <td>{log.type === "in" ? "입고" : "출고"}</td>
+                  <td>{log.chemicalName || chemicals.find((chemical) => chemical.id === log.chemicalId)?.name || log.chemicalId}</td>
+                  <td>{log.amount} {log.unit}</td>
+                  <td>{log.user || "-"}</td>
+                  <td className="print-purpose">{[log.purpose, log.note].filter(Boolean).join(" / ") || "-"}</td>
+                  <td className="print-sign-cell"></td>
+                </tr>
+              );
+            })}
+            {filteredLogs.length === 0 && <tr><td colSpan="8" className="print-empty">선택한 기간에 출력할 기록이 없습니다.</td></tr>}
+          </tbody>
+        </table>
+        <footer className="print-footer">관리자 확인 및 서명: ____________________________________　　확인일: ____________</footer>
+      </section>
+
+      {activeTab === "inventory" && (
+        <main className="content">
+          <section className="stats">
+            <div><span>전체 약품</span><strong>{stats.total}</strong></div>
+            <div><span>재고 부족</span><strong>{stats.low}</strong></div>
+            <div><span>오늘 기록</span><strong>{stats.logsToday}</strong></div>
+          </section>
+          <div className="toolbar">
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="약품명, 별칭, 위치 검색" />
+            <button className="primary" onClick={() => setLogModal(true)}>입출고</button>
+          </div>
+          <div className="chips">{categories.map((cat) => <button key={cat} className={category === cat ? "chip active" : "chip"} onClick={() => setCategory(cat)}>{cat}</button>)}</div>
+          <div className="chemical-grid">
+            {filteredChemicals.map((chemical) => {
+              const low = chemical.stock <= chemical.minStock;
+              return (
+                <article key={chemical.id} className="chemical-card" onClick={() => setSelectedChemical(chemical)}>
+                  <div><h3>{chemical.name}</h3><p>{chemical.category || "미분류"} · {chemical.location || "위치 없음"}</p></div>
+                  <strong className={low ? "stock low" : "stock"}>{chemical.stock}{chemical.unit}</strong>
+                </article>
+              );
+            })}
+          </div>
+        </main>
       )}
 
-      {/* Header */}
-      <div style={{ padding:"12px 16px", background:"#fff", borderBottom:"1px solid #E2E8F0", position:"sticky", top:0, zIndex:100 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div>
-            <h1 style={{ margin:0, fontSize:"18px", fontWeight:800, color:"#1A202C", letterSpacing:"-0.5px" }}>🧪 시약장관리</h1>
-            <div style={{ fontSize:"11px", color:"#A0AEC0", marginTop:2 }}>{SCHOOL_NAME}</div>
-          </div>
-          <div style={{ display:"flex", gap:8 }}>
-            <button onClick={() => setShowScanner(true)}
-              style={{ width:38, height:38, borderRadius:10, background:"#EBF8FF", border:"none", fontSize:"18px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>📷</button>
-            <button onClick={() => setShowAddForm(true)}
-              style={{ width:38, height:38, borderRadius:10, background:"#F0FFF4", border:"none", fontSize:"18px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>➕</button>
-            <a href="https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearchMsds.do" target="_blank" rel="noopener noreferrer"
-              title="MSDS 검색"
-              style={{ width:38, height:38, borderRadius:10, background:"#FFFBEB", border:"1.5px solid #F6E05E", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", textDecoration:"none", fontSize:"15px", fontWeight:700, color:"#744210" }}>
-              MSDS
-            </a>
-            <button onClick={handleSignOut} title={`로그아웃 (${user.email})`}
-              style={{ width:38, height:38, borderRadius:10, border:"none", cursor:"pointer", background:"#EDF2F7", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5568" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {activeTab==="dashboard" && renderDashboard()}
-      {activeTab==="inventory" && renderInventory()}
-      {activeTab==="detail"    && renderDetail()}
-
-      {activeTab !== "detail" && (
-        <button onClick={() => { setLogFormData({ chemicalId:"", type:"out", amount:"", user:"", purpose:"", note:"" }); setShowLogForm(true); }}
-          style={{ position:"fixed", bottom:80, right:20, width:56, height:56, borderRadius:"50%", background:"linear-gradient(135deg, #3182CE 0%, #2B6CB0 100%)", color:"#fff", border:"none", fontSize:"24px", cursor:"pointer", boxShadow:"0 4px 14px rgba(49,130,206,0.4)", zIndex:90, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          +
-        </button>
-      )}
-
-      <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:500, background:"#fff", borderTop:"1px solid #E2E8F0", display:"flex", padding:"6px 0 env(safe-area-inset-bottom, 8px)", zIndex:100 }}>
-        {[
-          { id:"dashboard", icon:"📊", label:"대시보드" },
-          { id:"inventory", icon:"🧪", label:"약품목록" },
-          { id:"scanner",   icon:"📷", label:"스캔", action: () => setShowScanner(true) },
-        ].map((tab) => (
-          <button key={tab.id} onClick={tab.action||(() => { setActiveTab(tab.id); setSelectedChemical(null); })}
-            style={{ flex:1, background:"none", border:"none", padding:"8px 0", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:2, color: activeTab===tab.id?"#3182CE":"#A0AEC0", transition:"color 0.2s" }}>
-            <span style={{ fontSize:"20px" }}>{tab.icon}</span>
-            <span style={{ fontSize:"10px", fontWeight: activeTab===tab.id?700:500 }}>{tab.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {showSetup   && <SetupWizard onComplete={handleSetupComplete} showToast={showToast} schoolId={schoolId} />}
-      {showScanner && <QRScanner chemicals={chemicals} onScan={handleScan} onClose={() => setShowScanner(false)} />}
-      {showLogForm  && renderLogForm()}
-      {showAddForm  && <AddChemicalModal chemicals={chemicals} onClose={() => setShowAddForm(false)} onAdd={handleAddChemical} onSelectExisting={handleSelectExisting} showToast={showToast} />}
-      {showEditChemical && selectedChemical && <EditChemicalModal chem={selectedChemical} onClose={() => setShowEditChemical(false)} onUpdate={handleUpdateChemical} showToast={showToast} />}
-      {showQRModal  && selectedChemical && <QRCodeModal chem={selectedChemical} onClose={() => setShowQRModal(false)} />}
-      {showEditLog  && editingLog && (
-        <EditLogModal
-          log={editingLog}
-          chem={chemicals.find((c) => c.id === editingLog.chemicalId)}
-          onClose={() => { setShowEditLog(false); setEditingLog(null); }}
-          onSave={handleEditLog}
-          onDelete={handleDeleteLog}
+      {activeTab === "experiments" && (
+        <ExperimentsView
+          chemicals={chemicals}
+          logs={logs}
+          experiments={experiments}
+          expChemicals={expChemicals}
+          onAddExperiment={addExperiment}
+          onDeleteExperiment={removeExperiment}
+          onAddExpChemical={addExperimentChemical}
+          onDeleteExpChemical={removeExperimentChemical}
+          onImportPresets={importPresets}
+          onPrepared={markPrepared}
         />
       )}
 
-      {toast && (
-        <div style={{ position:"fixed", top:60, left:"50%", transform:"translateX(-50%)", background: toast.type==="error"?"#E53E3E":"#38A169", color:"#fff", padding:"10px 20px", borderRadius:12, fontSize:"13px", fontWeight:600, zIndex:2000, boxShadow:"0 4px 12px rgba(0,0,0,0.15)", animation:"slideDown 0.3s ease" }}>
-          {toast.message}
-        </div>
+      {activeTab === "logs" && (
+        <main className="content">
+          <div className="toolbar"><h2>입출고 이력 <span className="muted">({filteredLogs.length}건)</span></h2><button className="primary" onClick={() => setLogModal(true)}>기록 추가</button></div>
+          <div className="log-print-toolbar">
+            <label><span>시작일</span><input type="date" value={logStartDate} onChange={(e) => setLogStartDate(e.target.value)} /></label>
+            <label><span>종료일</span><input type="date" value={logEndDate} onChange={(e) => setLogEndDate(e.target.value)} /></label>
+            <button className="ghost" onClick={() => { setLogStartDate(""); setLogEndDate(""); }}>전체 기간</button>
+            <button className="primary" disabled={!filteredLogs.length || invalidLogRange} onClick={() => window.print()}>인쇄 / 서명용 출력</button>
+          </div>
+          {invalidLogRange && <p className="error-text">시작일은 종료일보다 늦을 수 없습니다.</p>}
+          <div className="log-list">
+            {filteredLogs.map((log) => (
+              <article key={log.id} className="log-row">
+                <span className={log.type === "in" ? "badge in" : "badge out"}>{log.type === "in" ? "입고" : "출고"}</span>
+                <div><strong>{log.chemicalName || chemicals.find((c) => c.id === log.chemicalId)?.name || log.chemicalId}</strong><p>{log.purpose || "용도 없음"} · {log.user}</p></div>
+                <time>{new Date(log.date).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time>
+                <strong>{log.amount}{log.unit}</strong>
+              </article>
+            ))}
+            {filteredLogs.length === 0 && !invalidLogRange && <div className="empty">선택한 기간에 입출고 기록이 없습니다.</div>}
+          </div>
+        </main>
       )}
-      <style>{`@keyframes slideDown { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }`}</style>
+
+      {activeTab === "scan" && (
+        <main className="content">
+          <section className="pane center">
+            <h2>QR 스캔</h2>
+            <p className="muted">약품 코드가 담긴 QR을 카메라에 맞추거나 아래에 직접 입력합니다.</p>
+            <QRScannerView chemicals={chemicals} notify={notify} onFound={(chemical) => { setSelectedChemical(chemical); setActiveTab("inventory"); }} />
+            <input placeholder="약품 코드 입력" onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const found = chemicals.find((c) => c.id === e.currentTarget.value.trim());
+                if (found) { setSelectedChemical(found); setActiveTab("inventory"); }
+                else notify("등록되지 않은 약품입니다.");
+              }
+            }} />
+          </section>
+        </main>
+      )}
+
+      {selectedChemical && (
+        <Modal title={selectedChemical.name} onClose={() => setSelectedChemical(null)}>
+          <div className="chemical-detail">
+            <div className="big-stock">{selectedChemical.stock}<span>{selectedChemical.unit}</span></div>
+            <dl>
+              <div><dt>분류</dt><dd>{selectedChemical.category || "-"}</dd></div>
+              <div><dt>위치</dt><dd>{selectedChemical.location || "-"}</dd></div>
+              <div><dt>최소 재고</dt><dd>{selectedChemical.minStock}{selectedChemical.unit}</dd></div>
+              <div><dt>별칭</dt><dd>{toArray(selectedChemical.aliases).join(", ") || "-"}</dd></div>
+              <div><dt>메모</dt><dd>{selectedChemical.memo || "-"}</dd></div>
+              <div><dt>CAS No.</dt><dd>{selectedChemical.casNo || "-"}</dd></div>
+            </dl>
+          </div>
+          <div className="button-row right">
+            <button className="danger" onClick={() => removeChemical(selectedChemical)}>삭제</button>
+            <button className="ghost" onClick={() => setChemicalModal(selectedChemical)}>수정</button>
+            <button className="primary" onClick={() => { setLogModal({ chemicalId: selectedChemical.id, type: "out", amount: "", unit: selectedChemical.unit, user: "", purpose: "", note: "" }); }}>입출고</button>
+          </div>
+        </Modal>
+      )}
+
+      {chemicalModal && <ChemicalForm initial={chemicalModal} onSave={saveChemical} onClose={() => setChemicalModal(null)} />}
+      {logModal && <LogForm chemicals={chemicals} initial={typeof logModal === "object" ? logModal : emptyLog} onSave={saveLog} onClose={() => setLogModal(false)} />}
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
 
-// ─── Shared Styles ───
-const cardStyle        = { background:"#fff", borderRadius:14, padding:"14px", boxShadow:"0 1px 3px rgba(0,0,0,0.06)" };
-const inputStyle       = { padding:"10px 12px", borderRadius:10, border:"1.5px solid #E2E8F0", fontSize:"14px", outline:"none", background:"#fff" };
-const labelStyle       = { display:"block", fontSize:"12px", fontWeight:600, color:"#4A5568", marginBottom:4 };
-const btnStyle         = { padding:"12px", borderRadius:12, border:"none", fontWeight:700, fontSize:"14px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 };
-const chipStyle        = { padding:"6px 14px", borderRadius:20, border:"1.5px solid #E2E8F0", background:"#fff", fontSize:"12px", fontWeight:500, color:"#718096", cursor:"pointer", whiteSpace:"nowrap" };
-const chipActiveStyle  = { background:"#EBF8FF", borderColor:"#3182CE", color:"#3182CE", fontWeight:600 };
-const setupOptionStyle = { background:"#fff", border:"2px solid", borderRadius:16, padding:"16px 20px", textAlign:"center", cursor:"pointer", boxShadow:"0 2px 8px rgba(0,0,0,0.06)", display:"flex", flexDirection:"column", alignItems:"center" };
+const styles = `
+*{box-sizing:border-box} body{margin:0;background:#eef2f6;color:#172033;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif} button,input,select,textarea{font:inherit} button{cursor:pointer} .app{min-height:100vh;max-width:1180px;margin:0 auto;background:#f8fafc}.demo-banner{background:#fff3c4;color:#755118;text-align:center;padding:8px;font-size:13px;font-weight:700}.app-header{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:20px 24px;background:#fff;border-bottom:1px solid #dfe6ef;position:sticky;top:0;z-index:20}.app-header h1{margin:0;font-size:24px}.app-header p{margin:3px 0 0;color:#6b7688}.header-actions,.button-row{display:flex;align-items:center;gap:8px}.right{justify-content:flex-end}.compact{gap:6px}.tabs{display:flex;gap:2px;background:#fff;border-bottom:1px solid #dfe6ef;padding:0 16px}.tabs button{border:0;background:transparent;padding:14px 18px;color:#687386;font-weight:700}.tabs button.active{color:#1769aa;border-bottom:3px solid #1769aa}.content{padding:22px 24px 90px}.two-column{display:grid;grid-template-columns:360px 1fr;gap:18px}.pane{background:#fff;border:1px solid #dfe6ef;border-radius:8px;padding:16px}.center{text-align:center;max-width:560px;margin:0 auto}.qr-reader{margin:0 auto 16px;max-width:420px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.stats div{background:#fff;border:1px solid #dfe6ef;border-radius:8px;padding:16px}.stats span{display:block;color:#6b7688;font-size:13px}.stats strong{display:block;margin-top:8px;font-size:30px}.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px}.toolbar input{flex:1}.toolbar h2{margin:0;flex:1}input,select,textarea{border:1px solid #cfd8e3;border-radius:8px;padding:10px 12px;background:#fff;color:#172033}textarea{min-height:76px;resize:vertical}.primary,.ghost,.danger{border:0;border-radius:8px;padding:10px 14px;font-weight:800}.primary{background:#1769aa;color:#fff}.ghost{background:#eef3f8;color:#334155}.danger{background:#fee2e2;color:#b91c1c}.small{padding:8px 10px;font-size:13px}.full{width:100%;margin-top:12px}.icon-button{width:38px;height:38px;border:0;border-radius:8px;background:#eef3f8;color:#334155;font-size:18px}.chips{display:flex;gap:8px;overflow:auto;margin:8px 0 16px}.chip{border:1px solid #cfd8e3;background:#fff;color:#5e6a7c;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:700;white-space:nowrap}.chip.active{background:#e7f1fb;border-color:#1769aa;color:#1769aa}.chemical-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}.chemical-card{background:#fff;border:1px solid #dfe6ef;border-radius:8px;padding:14px;display:flex;justify-content:space-between;gap:10px;align-items:center}.chemical-card h3{margin:0;font-size:16px}.chemical-card p{margin:5px 0 0;color:#6b7688;font-size:13px}.stock{font-size:20px;color:#157347;white-space:nowrap}.stock.low{color:#c2410c}.list{display:flex;flex-direction:column;gap:8px;max-height:58vh;overflow:auto}.list-item{text-align:left;border:1px solid #dfe6ef;background:#fff;border-radius:8px;padding:12px}.list-item.selected{border-color:#1769aa;background:#f0f7ff}.list-item strong,.list-item span{display:block}.list-item span{margin-top:4px;color:#6b7688;font-size:13px}.detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.detail-head h2{margin:0}.detail-head p,.muted{color:#6b7688;margin:4px 0 12px}.table-wrap{overflow:auto;border:1px solid #dfe6ef;border-radius:8px}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:11px 12px;border-bottom:1px solid #edf1f5;text-align:left;font-size:14px}th{background:#f3f6fa;color:#4b5565}.status{border-radius:999px;padding:4px 8px;font-size:12px;font-weight:800}.status.ok{background:#dcfce7;color:#166534}.status.bad{background:#fee2e2;color:#991b1b}.empty,.empty-cell{text-align:center;color:#8894a6;padding:22px}.log-list{display:flex;flex-direction:column;gap:8px}.log-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center;background:#fff;border:1px solid #dfe6ef;border-radius:8px;padding:12px}.log-row p{margin:4px 0 0;color:#6b7688}.log-row time{color:#6b7688;font-size:13px}.badge{border-radius:999px;padding:5px 9px;font-size:12px;font-weight:800}.badge.in{background:#dcfce7;color:#166534}.badge.out{background:#fee2e2;color:#991b1b}.setup-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:#e9eef5}.setup-panel{width:min(680px,100%);background:#fff;border:1px solid #dfe6ef;border-radius:12px;padding:28px}.brand-mark{display:inline-grid;place-items:center;background:#1769aa;color:#fff;font-weight:900;border-radius:8px;width:54px;height:42px}.setup-panel h1{margin:16px 0 6px}.steps{display:grid;gap:10px;margin:20px 0}.steps div{display:flex;gap:12px;padding:14px;background:#f6f8fb;border-radius:8px;line-height:1.7}.steps strong{display:grid;place-items:center;background:#1769aa;color:#fff;border-radius:50%;width:28px;height:28px;flex:0 0 28px;font-size:15px}.steps a{color:#1769aa}.step-hint{display:block;margin-top:6px;font-size:12px;color:#6b7688;background:#eef3f8;border-radius:6px;padding:5px 8px}.step-table{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:8px 0;background:#fff;border:1px solid #dfe6ef;border-radius:6px;padding:8px 10px;font-size:13px}.copy-btn{margin-top:8px;padding:7px 14px;border:0;border-radius:7px;background:#1769aa;color:#fff;font-weight:800;cursor:pointer;font-size:13px}.copy-btn:active{background:#125a90}.setup-footer{margin:14px 0 0;font-size:12px;color:#8894a6;text-align:center}.field{display:grid;gap:6px}.field span,label span{font-size:13px;color:#4b5565;font-weight:800}.error-text{color:#b91c1c;font-weight:700;margin:8px 0;padding:8px 10px;background:#fef2f2;border-radius:6px;font-size:13px}.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.48);display:grid;place-items:center;padding:20px;z-index:50}.modal{width:min(720px,100%);max-height:88vh;overflow:auto;background:#fff;border-radius:10px;padding:18px}.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.modal-head h2{margin:0;font-size:20px}.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.form-grid label{display:grid;gap:5px}.form-grid .wide{grid-column:1/-1}.chemical-detail{display:grid;grid-template-columns:180px 1fr;gap:18px}.big-stock{display:grid;place-items:center;background:#f0f7ff;color:#1769aa;border-radius:8px;font-size:42px;font-weight:900}.big-stock span{font-size:18px;margin-left:4px}dl{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:0}dt{color:#6b7688;font-size:12px}dd{margin:3px 0 0;font-weight:700}.toast{position:fixed;left:50%;top:20px;transform:translateX(-50%);background:#172033;color:#fff;padding:12px 18px;border-radius:999px;font-weight:800;z-index:80;box-shadow:0 10px 28px rgba(0,0,0,.18)}code{background:#e8edf3;border-radius:5px;padding:2px 5px}@media(max-width:800px){.two-column{grid-template-columns:1fr}.stats{grid-template-columns:1fr}.app-header{align-items:flex-start}.tabs{overflow:auto}.chemical-detail{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.log-row{grid-template-columns:auto 1fr}.log-row time{display:none}}`;
+
+const printStyles = `
+.log-print-toolbar{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px;margin:0 0 16px;padding:12px;background:#fff;border:1px solid #dfe6ef;border-radius:8px}
+.log-print-toolbar label{display:grid;gap:5px}
+.log-print-toolbar label span{font-size:13px;color:#4b5565;font-weight:800}
+#print-sheet{display:none}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff!important;color:#111!important}
+  .app{max-width:none!important;min-height:0!important;background:#fff!important}
+  .app>:not(style):not(#print-sheet){display:none!important}
+  #print-sheet{display:block!important;color:#111;font-family:Arial,"Malgun Gothic",sans-serif}
+  .print-header{margin-bottom:12px}
+  .print-header h1{margin:0 0 8px;text-align:center;font-size:18pt}
+  .print-meta{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:9pt}
+  .print-log-table{width:100%;border-collapse:collapse;table-layout:fixed}
+  .print-log-table thead{display:table-header-group}
+  .print-log-table th,.print-log-table td{border:1px solid #555;padding:5px 6px;font-size:8.5pt;vertical-align:middle;overflow-wrap:anywhere}
+  .print-log-table th{background:#eee!important;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .print-log-table th:nth-child(1){width:5%}
+  .print-log-table th:nth-child(2){width:15%}
+  .print-log-table th:nth-child(3){width:7%}
+  .print-log-table th:nth-child(4){width:16%}
+  .print-log-table th:nth-child(5){width:10%}
+  .print-log-table th:nth-child(6){width:10%}
+  .print-log-table th:nth-child(7){width:21%}
+  .print-log-table th:nth-child(8){width:16%}
+  .print-log-table tbody tr{break-inside:avoid;page-break-inside:avoid}
+  .print-log-table td:not(.print-purpose){text-align:center}
+  .print-sign-cell{height:34px}
+  .print-empty{text-align:center;height:40px}
+  .print-footer{margin-top:18px;text-align:right;font-size:10pt}
+}
+@media(max-width:600px){.log-print-toolbar{align-items:stretch}.log-print-toolbar label{flex:1 1 130px}.log-print-toolbar button{flex:1 1 auto}}
+`;
